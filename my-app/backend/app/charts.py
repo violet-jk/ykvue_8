@@ -1,8 +1,10 @@
 import time
 from fastapi import APIRouter, HTTPException
 import pymysql
+import pandas as pd
+import numpy as np
+from datetime import datetime
 from .config import DB_CONFIG
-from collections import defaultdict
 
 router = APIRouter()
 
@@ -52,7 +54,7 @@ async def get_device_list():
         connection.close()
 
 
-@router.get("/one_device")
+@router.get("/one_device/cell")
 async def get_one_device(machine_name: str, machine_model: str):
     """
     根据 machine_name 和 machine_model 从 test 表获取数据
@@ -61,67 +63,97 @@ async def get_one_device(machine_name: str, machine_model: str):
     cursor = connection.cursor(pymysql.cursors.DictCursor)
 
     try:
-        sql = "SELECT * FROM test WHERE machine_name = %s AND machine_model = %s ORDER BY date,time"
+        sql = '''
+              SELECT date, time, cell_1, cell_2, cell_3, cell_4, cell_5, cell_6, cell_7, cell_8, cell_9, cell_10, cell_11, cell_12, cell_13, cell_14, cell_15, cell_16, cell_17, cell_18, cell_19, cell_20
+              FROM test
+              WHERE machine_name = %s
+                AND machine_model = %s
+              ORDER BY date, time \
+              '''
         cursor.execute(sql, (machine_name, machine_model))
         results = cursor.fetchall()
 
-        # 处理数据：为每个 cell 计算按 hours 分组的平均值
-        data = defaultdict(lambda: defaultdict(list))
-        voltage_range_data = defaultdict(list)
-        for row in results:
-            hours = row.get('hours')
-            if hours is None:
-                continue
-            for i in range(1, 21):
-                cell = f'cell_{i}'
-                if cell in row and row[cell] is not None:
-                    data[cell][hours].append(row[cell])
-            if 'voltage_range' in row and row['voltage_range'] is not None:
-                voltage_range_data[hours].append(row['voltage_range'])
-        print(voltage_range_data)
-        processed = {}
-        for cell, hour_dict in data.items():
-            all_values = []
-            for h in hour_dict:
-                all_values.extend(hour_dict[h])
-            if not all_values:
-                continue
-            zero_count = sum(1 for v in all_values if v == 0)
-            if zero_count / len(all_values) >= 0.8:
-                continue  # 舍弃该 cell
-            sorted_hours = sorted(hour_dict.keys())
-            x = []
-            y = []
-            for h in sorted_hours:
-                filtered = [v for v in hour_dict[h] if v >= 1400]
-                if filtered:
-                    avg = sum(filtered) / len(filtered)
-                    x.append(h)
-                    y.append(int(round(avg)))
-            processed[cell] = {'x': x, 'y': y}
+        # 使用 pandas 处理数据
+        df = pd.DataFrame(results)
 
-        # Process voltage_range
-        processed_voltage_range = {}
-        sorted_hours_vr = sorted(voltage_range_data.keys())
-        x_vr = []
-        y_vr = []
-        for h in sorted_hours_vr:
-            values = voltage_range_data[h]
-            if values:
-                avg_vr = sum(values) / len(values)
-                x_vr.append(h)
-                y_vr.append(int(round(avg_vr)))
-        processed_voltage_range = {'x': x_vr, 'y': y_vr}
+        if df.empty:
+            return {
+                "status": "success",
+                "voltage": {},
+            }
+
+        # 组合 date 和 time 成 datetime
+        # 处理 time 可能是 timedelta 类型的情况
+        df['date'] = pd.to_datetime(df['date'])
+
+        # 如果 time 是 timedelta，直接加到 date 上
+        if pd.api.types.is_timedelta64_dtype(df['time']) or isinstance(df['time'].iloc[0], pd.Timedelta):
+            df['datetime'] = df['date'] + df['time']
+        else:
+            # 如果 time 是字符串或时间类型，转换为 timedelta
+            df['datetime'] = pd.to_datetime(df['date'].astype(str) + ' ' + df['time'].astype(str))
+
+        voltage_data = {}
+
+        for i in range(1, 21):  # cell_1 到 cell_20
+            cell_field = f'cell_{i}'
+
+            if cell_field not in df.columns:
+                voltage_data[cell_field] = []
+                continue
+
+            # 创建副本避免警告
+            cell_df = df[['datetime', cell_field]].copy()
+            cell_df.columns = ['datetime', 'value']
+
+            # 转换为数值类型
+            cell_df['value'] = pd.to_numeric(cell_df['value'], errors='coerce')
+
+            # 找到第一个非0且>1400的值的索引
+            mask = (cell_df['value'] > 0) & (cell_df['value'] > 1400)
+            valid_indices = cell_df[mask].index
+
+            if len(valid_indices) == 0:
+                continue
+
+            # 获取起始时间
+            start_idx = valid_indices[0]
+            start_time = cell_df.loc[start_idx, 'datetime']
+
+            # 从起始时间开始筛选数据
+            cell_df = cell_df.loc[start_idx:].copy()
+
+            # 计算时间差（小时），向下取整
+            cell_df['time_diff'] = ((cell_df['datetime'] - start_time).dt.total_seconds() / 3600).astype(int)
+
+            # 先分组所有数据计算 y=0 比例（在过滤<1400之前）
+            grouped_all = cell_df.groupby('time_diff').agg({
+                'value': 'mean'
+            }).reset_index()
+            grouped_all.columns = ['x', 'y']
+            grouped_all['y'] = grouped_all['y'].round(2)
+            zero_ratio = (grouped_all['y'] == 0).sum() / len(grouped_all) if len(grouped_all) > 0 else 0
+            print(zero_ratio)
+            if zero_ratio > 0.8:
+                continue
+            else:
+                # 过滤掉 value < 1400 的数据
+                cell_df = cell_df[cell_df['value'] >= 1400].copy()
+
+                # 按小时分组计算平均值
+                grouped = cell_df.groupby('time_diff').agg({
+                    'value': 'mean'
+                }).reset_index()
+
+                # 重命名列为图表格式：x, y
+                grouped.columns = ['x', 'y']
+                grouped['y'] = grouped['y'].round(2)
+
+                voltage_data[cell_field] = {'x': grouped['x'].tolist(), 'y': grouped['y'].tolist()}
 
         return {
             "status": "success",
-            "voltage": processed,
-            "avg_voltage": None,
-            "voltage_range": processed_voltage_range,
-            "pump_pressure": None,
-            "specific_gravity": None,
-            "hydrogen_flow_meter": None,
-            "oxygen_in_hydrogen":None
+            "data": voltage_data,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")

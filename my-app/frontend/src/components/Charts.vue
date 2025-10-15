@@ -6,51 +6,42 @@
         <div style="flex: 1; min-width: 200px;">
           <div style="margin-bottom: 4px; font-size: 14px; color: #606266;">设备名称 (Machine Name)</div>
           <el-select
-            v-model="selectedMachineName"
-            placeholder="请选择设备名称"
-            filterable
-            clearable
-            style="width: 100%"
-            :loading="deviceListLoading"
-            @change="handleMachineNameChange"
+              v-model="selectedMachineName"
+              placeholder="请选择设备名称"
+              filterable
+              clearable
+              style="width: 100%"
+              :loading="deviceListLoading"
+              @change="handleMachineNameChange"
           >
             <el-option
-              v-for="name in machineNameList"
-              :key="name"
-              :label="name"
-              :value="name"
+                v-for="name in machineNameList"
+                :key="name"
+                :label="name"
+                :value="name"
             />
           </el-select>
         </div>
         <div style="flex: 1; min-width: 200px;">
           <div style="margin-bottom: 4px; font-size: 14px; color: #606266;">设备型号 (Machine Model)</div>
           <el-select
-            v-model="selectedMachineModel"
-            placeholder="请选择设备型号"
-            filterable
-            clearable
-            style="width: 100%"
-            :loading="deviceListLoading"
-            :disabled="!selectedMachineName"
-            @change="handleMachineModelChange"
+              v-model="selectedMachineModel"
+              placeholder="请选择设备型号"
+              filterable
+              clearable
+              style="width: 100%"
+              :loading="deviceListLoading"
+              :disabled="!selectedMachineName"
+              @change="handleMachineModelChange"
           >
             <el-option
-              v-for="model in machineModelList"
-              :key="model"
-              :label="model"
-              :value="model"
+                v-for="model in machineModelList"
+                :key="model"
+                :label="model"
+                :value="model"
             />
           </el-select>
         </div>
-        <el-button
-          type="primary"
-          :loading="loading"
-          :disabled="!selectedMachineName || !selectedMachineModel"
-          @click="loadChartData"
-          style="margin-top: 24px;"
-        >
-          加载数据
-        </el-button>
       </div>
     </el-card>
 
@@ -75,11 +66,11 @@
         </div>
       </template>
 
-      <ChartSkeleton v-if="loading" />
+      <ChartSkeleton v-if="loading"/>
       <div
-        v-show="!loading"
-        ref="chartContainer"
-        style="width: 100%; height: 600px;"
+          v-show="!loading"
+          ref="chartContainer"
+          style="width: 100%; height: 600px;"
       ></div>
 
       <template #footer>
@@ -92,13 +83,13 @@
     </el-card>
 
     <!-- 空状态提示 -->
-    <el-empty v-if="!chartDataLoaded" description="请选择设备名称和型号并加载数据" :image-size="200" />
+    <el-empty v-if="!chartDataLoaded" description="请选择设备名称和型号" :image-size="200"/>
   </el-card>
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, computed, onBeforeUnmount } from 'vue';
-import { ElMessage } from 'element-plus';
+import {ref, onMounted, computed, onBeforeUnmount} from 'vue';
+import {ElMessage} from 'element-plus';
 import Highcharts from 'highcharts';
 import 'highcharts/modules/boost';
 import ChartSkeleton from './ChartSkeleton.vue';
@@ -109,9 +100,16 @@ interface DeviceInfo {
   machine_model: string;
 }
 
-interface ChartData {
-  voltage: Record<string, { x: number[]; y: number[] }>;
-  voltage_range: { x: number[]; y: number[] };
+interface VoltageData {
+  [cellName: string]: {
+    x: number[];
+    y: number[];
+  };
+}
+
+interface VoltageRangeData {
+  x: number[];
+  y: number[];
 }
 
 const deviceList = ref<DeviceInfo[]>([]);
@@ -121,7 +119,7 @@ const selectedMachineModel = ref('');
 const selectedChartType = ref<'voltage' | 'voltage_range'>('voltage');
 const loading = ref(false);
 const chartDataLoaded = ref(false);
-const chartData = ref<ChartData | null>(null);
+const chartData = ref<Record<string, VoltageData | VoltageRangeData>>({});
 const chartContainer = ref<HTMLElement | null>(null);
 let chartInstance: Highcharts.Chart | null = null;
 
@@ -156,9 +154,10 @@ const selectedDeviceName = computed(() => {
 });
 
 const currentChartInfo = computed(() => {
-  if (!chartData.value) return '';
+  const data = chartData.value[selectedChartType.value];
+  if (!data) return '';
   if (selectedChartType.value === 'voltage') {
-    const cellCount = Object.keys(chartData.value.voltage).length;
+    const cellCount = Object.keys(data as VoltageData).length;
     return `${cellCount} 条曲线`;
   } else {
     return '1 条曲线';
@@ -166,11 +165,21 @@ const currentChartInfo = computed(() => {
 });
 
 const totalDataPoints = computed(() => {
-  if (!chartData.value) return 0;
+  const data = chartData.value[selectedChartType.value];
+  if (!data) return 0;
   if (selectedChartType.value === 'voltage') {
-    return Object.values(chartData.value.voltage).reduce((sum, cell) => sum + cell.x.length, 0);
+    return Object.values(data as VoltageData).reduce((sum, cell) => {
+      if (cell.x && cell.y) {
+        return sum + Math.min(cell.x.length, cell.y.length);
+      }
+      return sum;
+    }, 0);
   } else {
-    return chartData.value.voltage_range.x.length;
+    const vrData = data as VoltageRangeData;
+    if (vrData.x && vrData.y) {
+      return Math.min(vrData.x.length, vrData.y.length);
+    }
+    return 0;
   }
 });
 
@@ -194,21 +203,30 @@ const loadDeviceList = async () => {
 };
 
 // 加载图表数据
-const loadChartData = async () => {
+const loadChartData = async (type: 'voltage' | 'voltage_range' = 'voltage') => {
   if (!selectedMachineName.value || !selectedMachineModel.value) {
     ElMessage.warning('请先选择设备名称和型号');
     return;
   }
 
+  // 如果该类型的数据已经加载，直接渲染
+  if (chartData.value[type]) {
+    renderChart();
+    return;
+  }
+
   loading.value = true;
   try {
+    // 映射 chart type 到 API endpoint type
+    const apiType = type === 'voltage' ? 'cell' : 'voltage_range';
     const response = await fetch(
-      `/api/get/one_device?machine_name=${encodeURIComponent(selectedMachineName.value)}&machine_model=${encodeURIComponent(selectedMachineModel.value)}`
+        `/api/get/one_device/${apiType}?machine_name=${encodeURIComponent(selectedMachineName.value)}&machine_model=${encodeURIComponent(selectedMachineModel.value)}`
     );
     const result = await response.json();
 
     if (result.status === 'success') {
-      chartData.value = result;
+      // 将数据存储到对应的 chart type key 下
+      chartData.value[type] = result.data;
       chartDataLoaded.value = true;
 
       // 延迟渲染图表，确保 DOM 已更新
@@ -234,7 +252,7 @@ const handleMachineNameChange = () => {
   selectedMachineModel.value = '';
   // 清空图表数据
   chartDataLoaded.value = false;
-  chartData.value = null;
+  chartData.value = {};
   if (chartInstance) {
     chartInstance.destroy();
     chartInstance = null;
@@ -245,23 +263,25 @@ const handleMachineNameChange = () => {
 const handleMachineModelChange = () => {
   // 清空图表数据
   chartDataLoaded.value = false;
-  chartData.value = null;
+  chartData.value = {};
   if (chartInstance) {
     chartInstance.destroy();
     chartInstance = null;
   }
+  // 自动加载电压数据
+  loadChartData('voltage');
 };
 
 // 处理图表类型切换
 const handleChartTypeChange = () => {
-  if (chartData.value) {
-    renderChart();
-  }
+  loadChartData(selectedChartType.value);
 };
 
 // 渲染图表
 const renderChart = () => {
   if (!chartContainer.value || !chartData.value) return;
+
+  if (!chartData.value[selectedChartType.value]) return;
 
   // 销毁旧图表
   if (chartInstance) {
@@ -269,10 +289,10 @@ const renderChart = () => {
   }
 
   const colors = [
-    '#7cb5ec', '#434348', '#90ed7d', '#f7a35c', '#8085e9',
-    '#f15c80', '#e4d354', '#2b908f', '#f45b5b', '#91e8e1',
-    '#7cb5ec', '#434348', '#90ed7d', '#f7a35c', '#8085e9',
-    '#f15c80', '#e4d354', '#2b908f', '#f45b5b', '#91e8e1'
+    "#1F77B4", "#FF7F0E", "#2CA02C", "#D62728", "#9467BD",
+    "#8C564B", "#EFC94C", "#17BECF", "#4C72B0", "#DD8452",
+    "#55A868", "#C44E52", "#8172B3", "#937860", "#64B5CD",
+    "#E99675", "#97BBCD", "#B5BD89", "#FF6F61", "#6A5ACD"
   ];
 
   let series: Highcharts.SeriesOptionsType[] = [];
@@ -284,7 +304,7 @@ const renderChart = () => {
     series = Object.entries(chartData.value.voltage).map(([cellName, cellData], index) => ({
       type: 'line',
       name: cellName,
-      data: cellData.x.map((x, i) => [x, cellData.y[i]]),
+      data: cellData.x.map((x: number, i: number) => [x, cellData.y[i]]),
       color: colors[index % colors.length],
       marker: {
         enabled: false
@@ -295,16 +315,20 @@ const renderChart = () => {
     console.info(series)
   } else {
     // 电压范围图表 - 单条曲线
-    const vrData = chartData.value.voltage_range;
-    series = [{
-      type: 'line',
-      name: 'Voltage Range',
-      data: vrData.x.map((x, i) => [x, vrData.y[i]]),
-      color: '#7cb5ec',
-      marker: {
-        enabled: false
-      }
-    }];
+    const vrData = chartData.value[selectedChartType.value] as VoltageRangeData;
+    if (vrData.x && vrData.y) {
+      series = [{
+        type: 'line',
+        name: 'Voltage Range',
+        data: vrData.x.map((x: number, i: number) => [x, vrData.y[i]]),
+        color: '#7cb5ec',
+        marker: {
+          enabled: false
+        }
+      }];
+    } else {
+      series = [];
+    }
     yAxisTitle = '电压范围 (mV)';
     chartTitle = '电压范围图表 (Voltage Range)';
   }
@@ -353,9 +377,28 @@ const renderChart = () => {
       maxHeight: 80
     },
     tooltip: {
-      shared: false,
-      formatter: function() {
-        return `<b>${this.series.name}</b><br/>时间: ${this.x} 小时<br/>值: ${this.y}`;
+      shared: true,
+      useHTML: true,
+      formatter: function () {
+        const timeHours = this.x as number;
+        let tooltip = `<div style="font-size: 14px;">`;
+        tooltip += `<div style="text-align: center; font-weight: bold; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #eee;">`;
+        tooltip += `时间: <span style="color: #409EFF">${timeHours.toFixed(0)}</span> 小时</div>`;
+
+        if (this.points) {
+          this.points.forEach((point: any) => {
+            tooltip += `<div style="margin: 4px 0; display: flex; align-items: center; justify-content: space-between;">`;
+            tooltip += `<span style="display: flex; align-items: center;">`;
+            tooltip += `<span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: ${point.series.color}; margin-right: 8px;"></span>`;
+            tooltip += `<span style="font-weight: 500;">${point.series.name}</span>`;
+            tooltip += `</span>`;
+            tooltip += `<span style="font-weight: bold; color: ${point.series.color};">&nbsp${Number(point.y).toFixed(2)} mV</span>`;
+            tooltip += `</div>`;
+          });
+        }
+
+        tooltip += `</div>`;
+        return tooltip;
       }
     },
     plotOptions: {
@@ -367,7 +410,7 @@ const renderChart = () => {
         states: {
           hover: {
             enabled: true,
-            lineWidth: 3
+            lineWidth: 6
           }
         }
       }
