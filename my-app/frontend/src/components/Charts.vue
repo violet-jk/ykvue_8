@@ -1,8 +1,25 @@
 <template>
   <el-card>
-    <!-- 设备选择器 -->
+    <!-- 图表类型选择器 -->
     <el-card style="margin-bottom: 20px;">
       <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+        <div v-if="chartDataLoaded" >
+          <el-radio-group v-model="selectedChartType" @change="handleChartTypeChange" size="large">
+            <el-radio-button label="voltage">小室电压</el-radio-button>
+            <el-radio-button label="voltage_avg">小室电压平均值</el-radio-button>
+            <el-radio-button label="voltage_range">小室极差</el-radio-button>
+            <el-radio-button label="pump_pressure">泵后压力</el-radio-button>
+            <el-radio-button label="specific_gravity">碱液比重</el-radio-button>
+            <el-radio-button label="hydrogen_flow_meter">氢气流量</el-radio-button>
+            <el-radio-button label="inlet_outlet_pressure">电解槽进出槽压力</el-radio-button>
+            <el-radio-button label="pressure_difference">电解槽进出口压差</el-radio-button>
+            <el-radio-button label="oxygen_hydrogen_outlet_pressure">电解槽氢氧侧出槽压力</el-radio-button>
+            <el-radio-button label="oxygen_hydrogen_outlet_temp">电解槽氢氧侧出槽温度</el-radio-button>
+            <el-radio-button label="oxygen_hydrogen_cross">氧中氢/氢中氧</el-radio-button>
+          </el-radio-group>
+        </div>
+      </div>
+      <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;margin-top: 10px">
         <div style="flex: 1; min-width: 100px;max-width: 200px;">
           <div style="margin-bottom: 4px; font-size: 14px; color: #606266;">设备名称 (Machine Name)</div>
           <el-select
@@ -42,29 +59,7 @@
             />
           </el-select>
         </div>
-      </div>
-    </el-card>
-
-    <!-- 图表类型选择器 -->
-    <el-card v-if="chartDataLoaded" style="margin-bottom: 20px;">
-      <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
-        <div>
-          <el-radio-group v-model="selectedChartType" @change="handleChartTypeChange" size="large">
-            <el-radio-button label="voltage">电压图表 (Voltage)</el-radio-button>
-            <el-radio-button label="voltage_range">电压范围图表 (Voltage Range)</el-radio-button>
-            <el-radio-button label="voltage_avg">平均电压图表 (Voltage Avg)</el-radio-button>
-            <el-radio-button label="pump_pressure">泵压图表 (Pump Pressure)</el-radio-button>
-            <el-radio-button label="specific_gravity">比重图表 (Specific Gravity)</el-radio-button>
-            <el-radio-button label="hydrogen_flow_meter">氢流量图表 (Hydrogen Flow Meter)</el-radio-button>
-            <el-radio-button label="inlet_outlet_pressure">进出口压差图表 (Inlet/Outlet Pressure)</el-radio-button>
-            <el-radio-button label="oxygen_hydrogen_outlet_pressure">氧氢出口压差图表 (O2/H2 Outlet Pressure)
-            </el-radio-button>
-            <el-radio-button label="oxygen_hydrogen_outlet_temp">氧氢出口温度图表 (O2/H2 Outlet Temp)</el-radio-button>
-            <el-radio-button label="oxygen_hydrogen_cross">氧氢交叉图表 (O2/H2 Cross)</el-radio-button>
-            <el-radio-button label="pressure_difference">压力差图表 (Pressure Difference)</el-radio-button>
-          </el-radio-group>
-        </div>
-        <div style="display: flex; gap: 16px; align-items: center;">
+        <div v-if="chartDataLoaded"  style="display: flex; gap: 16px; align-items: center;">
           <div>
             <div style="margin-bottom: 4px; font-size: 14px; color: #606266;">Y轴最小值 (Y Min)</div>
             <el-input-number
@@ -102,17 +97,17 @@
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <div style="font-size: 16px; font-weight: 500;">
             {{
-              selectedChartType === 'voltage' ? '电压图表 (Voltage)' :
-                  selectedChartType === 'voltage_range' ? '电压范围图表 (Voltage Range)' :
-                      selectedChartType === 'voltage_avg' ? '平均电压图表 (Voltage Avg)' :
-                          selectedChartType === 'pump_pressure' ? '泵压图表 (Pump Pressure)' :
-                              selectedChartType === 'specific_gravity' ? '比重图表 (Specific Gravity)' :
-                                  selectedChartType === 'hydrogen_flow_meter' ? '氢流量图表 (Hydrogen Flow Meter)' :
-                                      selectedChartType === 'inlet_outlet_pressure' ? '进出口压差图表 (Inlet/Outlet Pressure)' :
-                                          selectedChartType === 'oxygen_hydrogen_outlet_pressure' ? '氧氢出口压差图表 (O2/H2 Outlet Pressure)' :
-                                              selectedChartType === 'oxygen_hydrogen_outlet_temp' ? '氧氢出口温度图表 (O2/H2 Outlet Temp)' :
-                                                  selectedChartType === 'oxygen_hydrogen_cross' ? '氧氢交叉图表 (O2/H2 Cross)' :
-                                                      '压力差图表 (Pressure Difference)'
+              selectedChartType === 'voltage' ? '小室电压' :
+                  selectedChartType === 'voltage_range' ? '小室极差' :
+                      selectedChartType === 'voltage_avg' ? '小室电压平均值' :
+                          selectedChartType === 'pump_pressure' ? '泵后压力' :
+                              selectedChartType === 'specific_gravity' ? '碱液比重' :
+                                  selectedChartType === 'hydrogen_flow_meter' ? '氢气流量' :
+                                      selectedChartType === 'inlet_outlet_pressure' ? '电解槽进出槽压力' :
+                                          selectedChartType === 'oxygen_hydrogen_outlet_pressure' ? '电解槽氢氧侧出槽压力' :
+                                              selectedChartType === 'oxygen_hydrogen_outlet_temp' ? '电解槽氢氧侧出槽温度' :
+                                                  selectedChartType === 'oxygen_hydrogen_cross' ? '氧中氢/氢中氧' :
+                                                      '电解槽进出口压差'
             }}
           </div>
           <div v-if="currentChartInfo" style="font-size: 14px; color: #666;">
@@ -475,14 +470,20 @@ const handleMachineModelChange = () => {
     localStorage.removeItem('cached_machine_model');
   }
 
+  // 先切换到电压图表
+  selectedChartType.value = 'voltage';
+
   // 清空图表数据和全局起始时间
-  chartDataLoaded.value = false;
   chartData.value = {};
   globalStartTime.value = '';
   if (chartInstance) {
     chartInstance.destroy();
     chartInstance = null;
   }
+  
+  // 重置 chartDataLoaded（这会触发界面更新）
+  chartDataLoaded.value = false;
+
   // 自动加载电压数据
   loadChartData('voltage');
 };
@@ -534,7 +535,7 @@ const calculateCurrentChartAutoMaxValue = () => {
     if (singleData.y && singleData.y.length > 0) {
       // 根据 voltage x 轴过滤数据后再计算最大值
       const filteredData = filterByVoltageXAxis(singleData);
-      if (filteredData.y.length > 0) {
+      if (filteredData.y && filteredData.y.length > 0) {
         globalMax = Math.max(...filteredData.y);
       }
     }
@@ -635,7 +636,7 @@ const renderChart = () => {
       }
     }));
     yAxisTitle = '电压 (mV)';
-    chartTitle = '电压图表 (Voltage)';
+    chartTitle = '小室电压';
 
     // 电压图表：最小值为0，自动计算最大值
     const maxValue = calculateCurrentChartAutoMaxValue() * 1.1;
@@ -656,7 +657,7 @@ const renderChart = () => {
     // 存储 voltage 图表第一条数据的 x 轴
     const firstSeries = series[0];
     if (firstSeries && 'data' in firstSeries && Array.isArray(firstSeries.data) && firstSeries.data.length > 0) {
-      voltageXAxis.value = (firstSeries.data as Array<{x: number, y: number, t?: string}>).map(point => point.x);
+      voltageXAxis.value = (firstSeries.data as Array<{ x: number, y: number, t?: string }>).map(point => point.x);
       // 计算X轴最大值
       const maxX = Math.max(...voltageXAxis.value);
       xAxisMax = maxX * 2; // X轴最大坐标扩展为2倍
@@ -711,8 +712,8 @@ const renderChart = () => {
     } else {
       series = [];
     }
-    yAxisTitle = '电压范围 (mV)';
-    chartTitle = '电压范围图表 (Voltage Range)';
+    yAxisTitle = '极差 (mV)';
+    chartTitle = '小室极差';
   } else if (selectedChartType.value === 'voltage_avg') {
     // 平均电压图表 - 单条曲线
     const avgData = chartData.value[selectedChartType.value] as VoltageAvgData;
@@ -761,8 +762,8 @@ const renderChart = () => {
     } else {
       series = [];
     }
-    yAxisTitle = '平均电压 (mV)';
-    chartTitle = '平均电压图表 (Voltage Avg)';
+    yAxisTitle = '小室平均电压 (mV)';
+    chartTitle = '小室电压平均值';
   } else if (selectedChartType.value === 'pump_pressure') {
     // 泵压图表 - 单条曲线
     const ppData = chartData.value[selectedChartType.value] as PumpPressureData;
@@ -812,7 +813,7 @@ const renderChart = () => {
       series = [];
     }
     yAxisTitle = '泵压 (Bar)';
-    chartTitle = '泵压图表 (Pump Pressure)';
+    chartTitle = '泵后压力';
   } else if (selectedChartType.value === 'specific_gravity') {
     // 比重图表 - 单条曲线
     const sgData = chartData.value[selectedChartType.value] as SpecificGravityData;
@@ -862,7 +863,7 @@ const renderChart = () => {
       series = [];
     }
     yAxisTitle = '比重 (g/cm³)';
-    chartTitle = '比重图表 (Specific Gravity)';
+    chartTitle = '碱液比重';
   } else if (selectedChartType.value === 'inlet_outlet_pressure') {
     // 进出口压差图表 - 双条曲线
     const ioData = chartData.value[selectedChartType.value] as InletOutletPressureData;
@@ -928,7 +929,7 @@ const renderChart = () => {
       series = [];
     }
     yAxisTitle = '压差 (Bar)';
-    chartTitle = '进出口压差图表 (Inlet/Outlet Pressure)';
+    chartTitle = '电解槽进出槽压力';
   } else if (selectedChartType.value === 'oxygen_hydrogen_outlet_pressure') {
     // 氧氢出口压差图表 - 双条曲线
     const ohData = chartData.value[selectedChartType.value] as OxygenHydrogenOutletPressureData;
@@ -994,7 +995,7 @@ const renderChart = () => {
       series = [];
     }
     yAxisTitle = '压差 (Bar)';
-    chartTitle = '氧氢出口压差图表 (O2/H2 Outlet Pressure)';
+    chartTitle = '电解槽氢氧侧出槽压力';
   } else if (selectedChartType.value === 'oxygen_hydrogen_outlet_temp') {
     // 氧氢出口温度图表 - 双条曲线
     const otData = chartData.value[selectedChartType.value] as OxygenHydrogenOutletTempData;
@@ -1060,7 +1061,7 @@ const renderChart = () => {
       series = [];
     }
     yAxisTitle = '温度 (°C)';
-    chartTitle = '氧氢出口温度图表 (O2/H2 Outlet Temp)';
+    chartTitle = '电解槽氢氧侧出槽温度';
   } else if (selectedChartType.value === 'oxygen_hydrogen_cross') {
     // 氧氢交叉图表 - 双条曲线
     const ocData = chartData.value[selectedChartType.value] as OxygenHydrogenCrossData;
@@ -1125,8 +1126,8 @@ const renderChart = () => {
     } else {
       series = [];
     }
-    yAxisTitle = '含量 (%)';
-    chartTitle = '氧氢交叉图表 (O2/H2 Cross)';
+    yAxisTitle = '含量 (ppm)';
+    chartTitle = '氧中氢/氢中氧';
   } else if (selectedChartType.value === 'pressure_difference') {
     // 压力差图表 - 单条曲线
     const pdData = chartData.value[selectedChartType.value] as PressureDifferenceData;
@@ -1176,7 +1177,7 @@ const renderChart = () => {
       series = [];
     }
     yAxisTitle = '压力差 (Bar)';
-    chartTitle = '压力差图表 (Pressure Difference)';
+    chartTitle = '电解槽进出口压差';
   } else {
     // 氢流量图表 - 单条曲线
     const hfData = chartData.value[selectedChartType.value] as HydrogenFlowMeterData;
@@ -1225,8 +1226,8 @@ const renderChart = () => {
     } else {
       series = [];
     }
-    yAxisTitle = '氢流量 (L/min)';
-    chartTitle = '氢流量图表 (Hydrogen Flow Meter)';
+    yAxisTitle = '氢流量';
+    chartTitle = '氢气流量';
   }
 
   // 创建新图表，启用 Boost 模式
