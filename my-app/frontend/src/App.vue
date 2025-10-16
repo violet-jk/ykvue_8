@@ -5,7 +5,7 @@
         <router-view>
         </router-view>
         <!-- 返回顶部按钮 - 全局可用 -->
-        <el-backtop :right="40" :bottom="40" :visibility-height="100" target=".main-content" class="custom-backtop">
+        <el-backtop :right="40" :bottom="40" :visibility-height="300" target=".main-content" class="custom-backtop">
           <div class="backtop-content">
             <el-icon size="30">
               <CaretTop />
