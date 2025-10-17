@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from .charts import router as charts_router
 from .auth import router as auth_router
+from .test import router as test_router
 
 app = FastAPI(title="My FastAPI Backend")
 
@@ -22,3 +23,4 @@ app.add_middleware(
 # 注册路由
 app.include_router(auth_router, prefix="/api/auth", tags=["认证"])
 app.include_router(charts_router, prefix="/api/get")
+app.include_router(test_router, prefix="/api/test", tags=["测试"])
