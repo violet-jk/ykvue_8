@@ -25,7 +25,7 @@ router.beforeEach((to, _from, next) => {
     if (to.meta.requiresAuth) {
         if (token) {
             // 有token，验证token是否有效
-            fetch('http://localhost:8000/api/auth/verify', {
+            fetch('/api/auth/verify', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`
