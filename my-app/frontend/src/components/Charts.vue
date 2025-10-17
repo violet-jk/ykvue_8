@@ -146,7 +146,7 @@
 </template>
 
 <script lang="ts" setup>
-import {ref, onMounted, computed, onBeforeUnmount} from 'vue';
+import {ref, onMounted, computed, onBeforeUnmount, nextTick} from 'vue';
 import {ElMessage} from 'element-plus';
 import Highcharts from 'highcharts';
 import 'highcharts/modules/boost';
@@ -261,7 +261,7 @@ const yAxisPrecision = computed(() => {
     case 'oxygen_hydrogen_outlet_temp':
       return 1; // 温度 (°C)
     case 'oxygen_hydrogen_cross':
-      return 3; // 含量 (%) - ppm级别
+      return 2; // 含量 (%) - ppm级别
     case 'hydrogen_flow_meter':
       return 2; // 氢流量 (L/min)
     default:
@@ -423,9 +423,9 @@ const loadChartData = async (type: 'voltage' | 'voltage_range' | 'voltage_avg' |
       chartDataLoaded.value = true;
 
       // 延迟渲染图表，确保 DOM 已更新
-      setTimeout(() => {
+      nextTick(() => {
         renderChart();
-      }, 100);
+      });
 
       ElMessage.success('数据加载成功');
     } else {
@@ -451,18 +451,26 @@ const handleMachineNameChange = () => {
   // 清空 machine_model 选择
   selectedMachineModel.value = '';
   localStorage.removeItem('cached_machine_model');
-  // 清空图表数据和全局起始时间
-  chartDataLoaded.value = false;
-  chartData.value = {};
-  globalStartTime.value = '';
+
+  // 销毁图表实例
   if (chartInstance) {
     chartInstance.destroy();
     chartInstance = null;
   }
+
+  // 重置所有状态
+  chartDataLoaded.value = false;
+  chartData.value = {};
+  globalStartTime.value = '';
+  voltageXAxis.value = [];
+  selectedChartType.value = 'voltage';
+  yAxisMin.value = 0;
+  yAxisMax.value = undefined;
+  yAxisStep.value = 10;
 };
 
 // 处理 machine_model 选择变化
-const handleMachineModelChange = () => {
+const handleMachineModelChange = async () => {
   // 保存到浏览器缓存
   if (selectedMachineModel.value) {
     localStorage.setItem('cached_machine_model', selectedMachineModel.value);
@@ -470,19 +478,29 @@ const handleMachineModelChange = () => {
     localStorage.removeItem('cached_machine_model');
   }
 
-  // 先切换到电压图表
-  selectedChartType.value = 'voltage';
-
-  // 清空图表数据和全局起始时间
-  chartData.value = {};
-  globalStartTime.value = '';
+  // 销毁旧图表实例
   if (chartInstance) {
     chartInstance.destroy();
     chartInstance = null;
   }
-  
-  // 重置 chartDataLoaded（这会触发界面更新）
+
+  // 重置所有状态
   chartDataLoaded.value = false;
+  chartData.value = {};
+  globalStartTime.value = '';
+  voltageXAxis.value = [];
+  selectedChartType.value = 'voltage';
+  yAxisMin.value = 0;
+  yAxisMax.value = undefined;
+  yAxisStep.value = 10;
+
+  // 如果清空了 model，不加载数据直接返回
+  if (!selectedMachineModel.value) {
+    return;
+  }
+
+  // 等待 DOM 更新后再加载数据
+  await nextTick();
 
   // 自动加载电压数据
   loadChartData('voltage');
@@ -1311,7 +1329,7 @@ const renderChart = () => {
             precision = 1;
           } else if (selectedChartType.value === 'oxygen_hydrogen_cross') {
             unit = 'ppm';
-            precision = 3;
+            precision = 2;
           } else if (selectedChartType.value === 'hydrogen_flow_meter') {
             unit = '';
             precision = 2;
