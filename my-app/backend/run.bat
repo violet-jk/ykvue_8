@@ -1,3 +1,3 @@
 @echo off
-uvicorn app.main:app --reload --port 8001 --log-level warning
+uvicorn app.main:app --reload --port 8000 --log-level warning
 pause
