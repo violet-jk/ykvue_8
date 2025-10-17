@@ -691,7 +691,7 @@ const renderChart = () => {
 
       series = [{
         type: 'line',
-        name: 'Voltage Range',
+        name: '极差',
         data: filteredData.x.map((x: number, i: number) => ({
           x: x,
           y: filteredData.y[i],
@@ -741,7 +741,7 @@ const renderChart = () => {
 
       series = [{
         type: 'line',
-        name: 'Average Voltage',
+        name: '平均电压',
         data: filteredData.x.map((x: number, i: number) => ({
           x: x,
           y: filteredData.y[i],
@@ -791,7 +791,7 @@ const renderChart = () => {
 
       series = [{
         type: 'line',
-        name: 'Pump Pressure',
+        name: '泵后压力',
         data: filteredData.x.map((x: number, i: number) => ({
           x: x,
           y: filteredData.y[i],
@@ -841,7 +841,7 @@ const renderChart = () => {
 
       series = [{
         type: 'line',
-        name: 'Specific Gravity',
+        name: '碱液比重',
         data: filteredData.x.map((x: number, i: number) => ({
           x: x,
           y: filteredData.y[i],
@@ -893,7 +893,7 @@ const renderChart = () => {
       series = [
         {
           type: 'line',
-          name: 'Inlet Pressure',
+          name: '进槽压力',
           data: filteredInlet.x.map((x: number, i: number) => ({
             x: x,
             y: filteredInlet.y[i],
@@ -906,7 +906,7 @@ const renderChart = () => {
         },
         {
           type: 'line',
-          name: 'Outlet Pressure',
+          name: '氧侧出槽压力',
           data: filteredOutlet.x.map((x: number, i: number) => ({
             x: x,
             y: filteredOutlet.y[i],
@@ -959,7 +959,7 @@ const renderChart = () => {
       series = [
         {
           type: 'line',
-          name: 'O2 出口压差',
+          name: '氧侧出槽压力',
           data: filteredOxygen.x.map((x: number, i: number) => ({
             x: x,
             y: filteredOxygen.y[i],
@@ -972,7 +972,7 @@ const renderChart = () => {
         },
         {
           type: 'line',
-          name: 'H2 出口压差',
+          name: '氢侧出槽压力',
           data: filteredHydrogen.x.map((x: number, i: number) => ({
             x: x,
             y: filteredHydrogen.y[i],
@@ -1025,7 +1025,7 @@ const renderChart = () => {
       series = [
         {
           type: 'line',
-          name: 'O2 出口温度',
+          name: '氧侧出槽温度',
           data: filteredOxygen.x.map((x: number, i: number) => ({
             x: x,
             y: filteredOxygen.y[i],
@@ -1038,7 +1038,7 @@ const renderChart = () => {
         },
         {
           type: 'line',
-          name: 'H2 出口温度',
+          name: '氢气出槽温度',
           data: filteredHydrogen.x.map((x: number, i: number) => ({
             x: x,
             y: filteredHydrogen.y[i],
