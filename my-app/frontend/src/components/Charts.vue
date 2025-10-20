@@ -1297,6 +1297,7 @@ const renderChart = () => {
     tooltip: {
       shared: true,
       useHTML: true,
+      animation: false,
       formatter: function () {
         const timeHours = this.x as number;
         let tooltip = `<div style="font-size: 14px;">`;
