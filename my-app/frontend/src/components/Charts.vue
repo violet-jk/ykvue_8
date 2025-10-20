@@ -1298,6 +1298,27 @@ const renderChart = () => {
       shared: true,
       useHTML: true,
       animation: false,
+      positioner: function (labelWidth, labelHeight, point) {
+        // 获取图表和鼠标位置
+        const chart = this.chart;
+
+        // 计算tooltip位置：数据点右侧10px
+        let x = point.plotX + chart.plotLeft + 10;
+        let y = point.plotY + chart.plotTop - labelHeight / 2;
+
+        // 确保tooltip不超出图表边界
+        if (x + labelWidth > chart.plotWidth + chart.plotLeft) {
+          x = point.plotX + chart.plotLeft - labelWidth - 10; // 如果右侧空间不够，显示在左侧
+        }
+        if (y < chart.plotTop) {
+          y = chart.plotTop; // 确保不超出顶部
+        }
+        if (y + labelHeight > chart.plotTop + chart.plotHeight) {
+          y = chart.plotTop + chart.plotHeight - labelHeight; // 确保不超出底部
+        }
+
+        return { x, y };
+      },
       formatter: function () {
         const timeHours = this.x as number;
         let tooltip = `<div style="font-size: 14px;">`;

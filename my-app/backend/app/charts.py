@@ -229,6 +229,7 @@ async def get_voltage_avg(machine_name: str, machine_model: str, start_time: str
               FROM test
               WHERE machine_name = %s
                 AND machine_model = %s
+                AND avg_voltage IS NOT NULL
               ORDER BY date, time
               '''
         cursor.execute(sql, (machine_name, machine_model))
@@ -312,6 +313,7 @@ async def get_voltage_range(machine_name: str, machine_model: str, start_time: s
               FROM test
               WHERE machine_name = %s
                 AND machine_model = %s
+                AND voltage_range IS NOT NULL
               ORDER BY date, time
               '''
         cursor.execute(sql, (machine_name, machine_model))
@@ -392,6 +394,7 @@ async def get_pump_pressure(machine_name: str, machine_model: str, start_time: s
               FROM test
               WHERE machine_name = %s
                 AND machine_model = %s
+                AND pump_pressure IS NOT NULL
               ORDER BY date, time
               '''
         cursor.execute(sql, (machine_name, machine_model))
@@ -472,6 +475,7 @@ async def get_specific_gravity(machine_name: str, machine_model: str, start_time
               FROM test
               WHERE machine_name = %s
                 AND machine_model = %s
+                AND specific_gravity IS NOT NULL
               ORDER BY date, time
               '''
         cursor.execute(sql, (machine_name, machine_model))
@@ -552,6 +556,7 @@ async def get_hydrogen_flow_meter(machine_name: str, machine_model: str, start_t
               FROM test
               WHERE machine_name = %s
                 AND machine_model = %s
+                AND hydrogen_flow_meter IS NOT NULL
               ORDER BY date, time
               '''
         cursor.execute(sql, (machine_name, machine_model))
@@ -632,6 +637,8 @@ async def get_inlet_outlet_pressure(machine_name: str, machine_model: str, start
               FROM test
               WHERE machine_name = %s
                 AND machine_model = %s
+                AND inlet_pressure IS NOT NULL
+                AND oxygen_outlet_pressure IS NOT NULL
               ORDER BY date, time
               '''
         cursor.execute(sql, (machine_name, machine_model))
@@ -709,6 +716,8 @@ async def get_oxygen_hydrogen_outlet_pressure(machine_name: str, machine_model: 
               FROM test
               WHERE machine_name = %s
                 AND machine_model = %s
+                AND oxygen_outlet_pressure IS NOT NULL
+                AND hydrogen_outlet_pressure IS NOT NULL
               ORDER BY date, time
               '''
         cursor.execute(sql, (machine_name, machine_model))
@@ -784,6 +793,8 @@ async def get_oxygen_hydrogen_outlet_temp(machine_name: str, machine_model: str,
               FROM test
               WHERE machine_name = %s
                 AND machine_model = %s
+                AND oxygen_outlet_temp IS NOT NULL
+                AND hydrogen_outlet_temp IS NOT NULL
               ORDER BY date, time
               '''
         cursor.execute(sql, (machine_name, machine_model))
@@ -859,6 +870,8 @@ async def get_oxygen_hydrogen_cross(machine_name: str, machine_model: str, start
               FROM test
               WHERE machine_name = %s
                 AND machine_model = %s
+                AND oxygen_in_hydrogen IS NOT NULL
+                AND hydrogen_in_oxygen IS NOT NULL
               ORDER BY date, time
               '''
         cursor.execute(sql, (machine_name, machine_model))
@@ -935,6 +948,8 @@ async def get_pressure_difference(machine_name: str, machine_model: str, start_t
               FROM test
               WHERE machine_name = %s
                 AND machine_model = %s
+                AND inlet_pressure IS NOT NULL
+                AND oxygen_outlet_pressure IS NOT NULL
               ORDER BY date, time
               '''
         cursor.execute(sql, (machine_name, machine_model))
