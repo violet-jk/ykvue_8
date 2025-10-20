@@ -558,7 +558,7 @@ const calculateCurrentChartAutoMaxValue = () => {
       }
     }
   }
-
+  console.info(globalMax*1.1)
   return globalMax;
 };
 
@@ -572,7 +572,7 @@ const autoFitYAxis = () => {
   if (chartInstance && chartInstance.yAxis && chartInstance.yAxis[0]) {
     chartInstance.yAxis[0].update({
       min: 0,
-      max: maxValue
+      max: maxValue * 1.1
     }, true);
   }
 };
@@ -1286,6 +1286,8 @@ const renderChart = () => {
       crosshair: true,
       min: autoYMin,
       max: autoYMax,
+      startOnTick: false,
+      endOnTick: false
     },
     legend: {
       enabled: ['voltage', 'inlet_outlet_pressure', 'oxygen_hydrogen_outlet_pressure', 'oxygen_hydrogen_outlet_temp', 'oxygen_hydrogen_cross'].includes(selectedChartType.value),
