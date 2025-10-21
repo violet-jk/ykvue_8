@@ -277,7 +277,11 @@ const machineNameList = computed(() => {
       names.add(device.machine_name);
     }
   });
-  return Array.from(names).sort();
+  return Array.from(names).sort((a, b) => {
+    const numA = parseInt(a.split('#')[0].trim()) || 0;
+    const numB = parseInt(b.split('#')[0].trim()) || 0;
+    return numA - numB;
+  });
 });
 
 // 根据选中的 machine_name 过滤 machine_model 列表
