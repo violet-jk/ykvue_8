@@ -1,5 +1,6 @@
 import paho.mqtt.client as mqtt
 import threading
+import uuid
 from fastapi import APIRouter
 from typing import Optional
 
@@ -75,8 +76,13 @@ def start_mqtt_client():
     global mqtt_client, mqtt_connected
 
     try:
+        # 生成随机的客户端ID，避免重复连接冲突
+        random_client_id = f"fastapi_backend_{uuid.uuid4().hex[:8]}"
+
         # 创建MQTT客户端实例
-        mqtt_client = mqtt.Client(client_id="fastapi_backend_client")
+        mqtt_client = mqtt.Client(client_id=random_client_id)
+
+        print(f"[MQTT] 使用客户端ID: {random_client_id}")
 
         # 设置回调函数
         mqtt_client.on_connect = on_connect
