@@ -5,9 +5,11 @@ import { ElMessage } from 'element-plus'
 // 使用懒加载替代静态导入
 const Charts = () => import('../components/Charts.vue')
 const Login = () => import('../components/Login.vue')
+const Home = () => import('../components/Home.vue')
 
 const routes: RouteRecordRaw[] = [
-    {path: '/', name: 'home', component: Charts, meta: { requiresAuth: true }},
+    {path: '/', name: 'root', component: Home, meta: { requiresAuth: true }},
+    {path: '/home', name: 'home', component: Home, meta: { requiresAuth: true }},
     {path: '/charts', name: 'charts', component: Charts, meta: { requiresAuth: true }},
     {path: '/login', name: 'login', component: Login, meta: { requiresAuth: false }},
 ]
@@ -55,7 +57,7 @@ router.beforeEach((to, _from, next) => {
         // 不需要认证的页面
         if (to.path === '/login' && token) {
             // 已登录用户访问登录页，重定向到首页
-            next('/')
+            next('/home')
         } else {
             next()
         }

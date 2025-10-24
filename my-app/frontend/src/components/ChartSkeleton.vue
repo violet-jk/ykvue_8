@@ -64,7 +64,7 @@
 <style scoped>
 .chart-skeleton {
   width: 100%;
-  height: 600px;
+  height: 500px;
   background: #fafafa;
   border-radius: 4px;
   padding: 24px;

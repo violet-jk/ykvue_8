@@ -1,5 +1,10 @@
 <template>
   <el-card>
+    <!-- 返回按钮 -->
+    <div style="margin-bottom: 20px;">
+      <el-button @click="goHome" type="primary" plain icon="ArrowLeft">返回首页</el-button>
+    </div>
+
     <!-- 图表类型选择器 -->
     <el-card style="margin-bottom: 20px;">
       <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
@@ -147,10 +152,18 @@
 
 <script lang="ts" setup>
 import {ref, onMounted, computed, onBeforeUnmount, nextTick} from 'vue';
+import {useRouter} from 'vue-router';
 import {ElMessage} from 'element-plus';
 import Highcharts from 'highcharts';
 import 'highcharts/modules/boost';
 import ChartSkeleton from './ChartSkeleton.vue';
+
+const router = useRouter();
+
+// 返回首页
+const goHome = () => {
+  router.push('/home');
+};
 
 
 interface DeviceInfo {
