@@ -1,6 +1,8 @@
 import paho.mqtt.client as mqtt
 import threading
 import uuid
+from datetime import datetime
+from collections import deque
 from fastapi import APIRouter
 from typing import Optional
 
@@ -16,22 +18,42 @@ MQTT_TOPIC = "WinCC/#"  # 订阅WinCC下的所有主题
 mqtt_client: Optional[mqtt.Client] = None
 mqtt_connected = False
 mqtt_lock = threading.Lock()
+mqtt_logs = deque(maxlen=100)  # 最多保存100条日志
 
 
 def on_connect(client, userdata, flags, rc):
     """MQTT连接成功回调"""
     global mqtt_connected
     if rc == 0:
-        print(f"[MQTT] 成功连接到MQTT Broker: {MQTT_BROKER}:{MQTT_PORT}")
+        msg = f"[MQTT] 成功连接到MQTT Broker: {MQTT_BROKER}:{MQTT_PORT}"
+        print(msg)
         with mqtt_lock:
             mqtt_connected = True
+            mqtt_logs.append({
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "level": "成功",
+                "message": msg
+            })
         # 订阅主题
         client.subscribe(MQTT_TOPIC)
-        print(f"[MQTT] 已订阅主题: {MQTT_TOPIC}")
+        subscribe_msg = f"[MQTT] 已订阅主题: {MQTT_TOPIC}"
+        print(subscribe_msg)
+        with mqtt_lock:
+            mqtt_logs.append({
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "level": "成功",
+                "message": subscribe_msg
+            })
     else:
-        print(f"[MQTT] 连接失败，返回码: {rc}")
+        msg = f"[MQTT] 连接失败，返回码: {rc}"
+        print(msg)
         with mqtt_lock:
             mqtt_connected = False
+            mqtt_logs.append({
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "level": "错误",
+                "message": msg
+            })
 
 
 def on_disconnect(client, userdata, rc):
@@ -40,9 +62,23 @@ def on_disconnect(client, userdata, rc):
     with mqtt_lock:
         mqtt_connected = False
     if rc != 0:
-        print(f"[MQTT] 意外断开连接，返回码: {rc}")
+        msg = f"[MQTT] 意外断开连接，返回码: {rc}"
+        print(msg)
+        with mqtt_lock:
+            mqtt_logs.append({
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "level": "警告",
+                "message": msg
+            })
     else:
-        print("[MQTT] 正常断开连接")
+        msg = "[MQTT] 正常断开连接"
+        print(msg)
+        with mqtt_lock:
+            mqtt_logs.append({
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "level": "信息",
+                "message": msg
+            })
 
 
 def on_message(client, userdata, msg):
@@ -50,13 +86,33 @@ def on_message(client, userdata, msg):
     try:
         topic = msg.topic
         payload = msg.payload.decode('utf-8')
-        print(f"[MQTT] 收到消息 - 主题: {topic}, 数据: {payload[:100]}...")  # 只打印前100个字符
+
+        # 限制日志消息长度
+        log_payload = payload[:100] if len(payload) > 100 else payload
+        message_msg = f"[MQTT] 收到消息 - 主题: {topic}, 数据: {log_payload}"
+
+        print(message_msg)
+
+        # 记录日志
+        with mqtt_lock:
+            mqtt_logs.append({
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "level": "信息",
+                "message": message_msg
+            })
 
         # TODO: 这里添加数据清洗逻辑
         # clean_and_store_data(topic, payload)
 
     except Exception as e:
-        print(f"[MQTT] 处理消息时出错: {str(e)}")
+        error_msg = f"[MQTT] 处理消息时出错: {str(e)}"
+        print(error_msg)
+        with mqtt_lock:
+            mqtt_logs.append({
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "level": "错误",
+                "message": error_msg
+            })
 
 
 def clean_and_store_data(topic: str, payload: str):
@@ -82,7 +138,14 @@ def start_mqtt_client():
         # 创建MQTT客户端实例
         mqtt_client = mqtt.Client(client_id=random_client_id)
 
-        print(f"[MQTT] 使用客户端ID: {random_client_id}")
+        startup_msg = f"[MQTT] 使用客户端ID: {random_client_id}"
+        print(startup_msg)
+        with mqtt_lock:
+            mqtt_logs.append({
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "level": "信息",
+                "message": startup_msg
+            })
 
         # 设置回调函数
         mqtt_client.on_connect = on_connect
@@ -90,17 +153,39 @@ def start_mqtt_client():
         mqtt_client.on_message = on_message
 
         # 连接到MQTT Broker
-        print(f"[MQTT] 正在连接到 {MQTT_BROKER}:{MQTT_PORT}...")
+        connecting_msg = f"[MQTT] 正在连接到 {MQTT_BROKER}:{MQTT_PORT}..."
+        print(connecting_msg)
+        with mqtt_lock:
+            mqtt_logs.append({
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "level": "信息",
+                "message": connecting_msg
+            })
+
         mqtt_client.connect(MQTT_BROKER, MQTT_PORT, MQTT_KEEPALIVE)
 
         # 在后台线程中运行MQTT客户端循环
         mqtt_client.loop_start()
-        print("[MQTT] MQTT客户端已启动")
+
+        started_msg = "[MQTT] MQTT客户端已启动"
+        print(started_msg)
+        with mqtt_lock:
+            mqtt_logs.append({
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "level": "成功",
+                "message": started_msg
+            })
 
     except Exception as e:
-        print(f"[MQTT] 启动失败: {str(e)}")
+        error_msg = f"[MQTT] 启动失败: {str(e)}"
+        print(error_msg)
         with mqtt_lock:
             mqtt_connected = False
+            mqtt_logs.append({
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "level": "错误",
+                "message": error_msg
+            })
 
 
 def stop_mqtt_client():
@@ -111,9 +196,24 @@ def stop_mqtt_client():
         try:
             mqtt_client.loop_stop()
             mqtt_client.disconnect()
-            print("[MQTT] MQTT客户端已停止")
+
+            stopped_msg = "[MQTT] MQTT客户端已停止"
+            print(stopped_msg)
+            with mqtt_lock:
+                mqtt_logs.append({
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "level": "信息",
+                    "message": stopped_msg
+                })
         except Exception as e:
-            print(f"[MQTT] 停止MQTT客户端时出错: {str(e)}")
+            error_msg = f"[MQTT] 停止MQTT客户端时出错: {str(e)}"
+            print(error_msg)
+            with mqtt_lock:
+                mqtt_logs.append({
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "level": "错误",
+                    "message": error_msg
+                })
         finally:
             with mqtt_lock:
                 mqtt_connected = False
@@ -139,4 +239,32 @@ async def get_mqtt_status():
             "port": MQTT_PORT,
             "topic": MQTT_TOPIC
         }
+
+
+@router.get("/logs")
+async def get_mqtt_logs():
+    """
+    获取MQTT日志列表
+
+    返回:
+    {
+        "logs": [
+            {
+                "timestamp": "2025-01-24 10:30:45",
+                "level": "成功",
+                "message": "[MQTT] 成功连接到MQTT Broker: 124.222.161.163:1883"
+            },
+            ...
+        ],
+        "total": 5
+    }
+    """
+    with mqtt_lock:
+        logs_list = list(mqtt_logs)
+
+    return {
+        "logs": logs_list,
+        "total": len(logs_list)
+    }
+
 

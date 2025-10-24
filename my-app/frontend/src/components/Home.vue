@@ -36,7 +36,7 @@
             </div>
             <!-- MQTT 状态显示在右下角 -->
             <div class="mqtt-status-badge">
-              <div class="status-indicator" :class="serverStatus">
+              <div class="status-indicator" :class="serverStatus" @click="showLogsDialog" style="cursor: pointer;">
                 <span class="status-dot"></span>
                 <span class="status-text">{{ serverStatus === 'running' ? '运行中' : '未运行' }}</span>
               </div>
@@ -85,16 +85,18 @@
         <template #header>
           <div class="card-header">其他</div>
         </template>
-        <div class="button-group">
-          <el-button type="success" class="action-btn" @click="handleExportData">
-            <span class="btn-icon">📥</span>
-            导出数据
-          </el-button>
-          <el-button type="primary" class="action-btn" @click="handleHistoryClick">
-            <span class="btn-icon">📋</span>
-            查看历史记录
-          </el-button>
-        </div>
+        <template #default>
+          <div class="button-group">
+            <el-button type="success" class="action-btn" @click="handleExportData">
+              <span class="btn-icon">📥</span>
+              导出数据
+            </el-button>
+            <el-button type="primary" class="action-btn" @click="handleHistoryClick">
+              <span class="btn-icon">📋</span>
+              查看历史记录
+            </el-button>
+          </div>
+        </template>
       </el-card>
     </div>
 
@@ -124,6 +126,33 @@
         <div id="combined-chart" class="chart-wrapper-large"></div>
       </template>
     </el-card>
+
+    <!-- 日志对话框 -->
+    <el-dialog
+      v-model="logsDialogVisible"
+      title="系统日志"
+      width="80%"
+      :close-on-click-modal="false"
+    >
+      <div class="logs-dialog-content">
+        <div class="logs-container">
+          <div
+            v-for="(log, index) in systemLogs"
+            :key="index"
+            class="log-line"
+            :class="{'log-error': log.includes('[错误]'), 'log-warning': log.includes('[警告]'), 'log-success': log.includes('[成功]')}"
+          >
+            {{ log }}
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="systemLogs = []">清除日志</el-button>
+          <el-button type="primary" @click="closeLogsDialog">关闭</el-button>
+        </div>
+      </template>
+    </el-dialog>
 
     <!-- 导出数据对话框 -->
     <el-dialog
@@ -183,7 +212,18 @@ interface OverviewResponse {
 // 响应式数据
 const router = useRouter()
 const loading = ref(false)
-const selectedDay = ref(1)
+
+// 从localStorage加载上次选择的天数，如果没有则默认为1
+const loadSelectedDay = (): number => {
+  const saved = localStorage.getItem('selectedDay')
+  if (saved) {
+    const day = parseInt(saved)
+    return [1, 7].includes(day) ? day : 1
+  }
+  return 1
+}
+
+const selectedDay = ref(loadSelectedDay())
 const queryTime = ref('')
 const devicesData = ref<Device[]>([])
 const chartsMap = new Map<string, Highcharts.Chart>()
@@ -304,6 +344,50 @@ const handleHistoryClick = () => {
   router.push('/charts')
 }
 
+// 日志对话框相关
+const logsDialogVisible = ref(false)
+const systemLogs = ref<string[]>([])
+let logsRefreshInterval: ReturnType<typeof setInterval> | null = null
+
+// 获取MQTT日志
+const fetchMqttLogs = async () => {
+  try {
+    const response = await axios.get('/api/mqtt/logs')
+    // 将日志对象数组转换为格式化的字符串数组
+    systemLogs.value = response.data.logs.map((log: any) => {
+      return `[${log.timestamp}] [${log.level}] ${log.message}`
+    })
+  } catch (error) {
+    console.error('获取MQTT日志失败:', error)
+    systemLogs.value = ['[系统] 获取日志失败']
+  }
+}
+
+// 显示日志对话框
+const showLogsDialog = () => {
+  fetchMqttLogs() // 打开对话框时刷新日志
+  logsDialogVisible.value = true
+
+  // 打开对话框后，每2秒自动刷新一次日志
+  if (logsRefreshInterval) {
+    clearInterval(logsRefreshInterval)
+  }
+  logsRefreshInterval = setInterval(() => {
+    if (logsDialogVisible.value) {
+      fetchMqttLogs()
+    }
+  }, 2000)
+}
+
+// 关闭日志对话框时停止自动刷新
+const closeLogsDialog = () => {
+  logsDialogVisible.value = false
+  if (logsRefreshInterval) {
+    clearInterval(logsRefreshInterval)
+    logsRefreshInterval = null
+  }
+}
+
 // 导出对话框相关
 const exportDialogVisible = ref(false)
 const exportLoading = ref(false)
@@ -409,6 +493,8 @@ const confirmExport = async () => {
 // 选择查询天数
 const selectDay = (day: number) => {
   selectedDay.value = day
+  // 保存到localStorage
+  localStorage.setItem('selectedDay', day.toString())
   fetchOverviewData()
 }
 
@@ -595,6 +681,11 @@ onMounted(() => {
 // 页面卸载时停止自动刷新
 onUnmounted(() => {
   stopAutoRefresh()
+  // 清理日志刷新定时器
+  if (logsRefreshInterval) {
+    clearInterval(logsRefreshInterval)
+    logsRefreshInterval = null
+  }
 })
 </script>
 
@@ -1228,101 +1319,73 @@ onUnmounted(() => {
   opacity: 0.5;
 }
 
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .home-container {
-    padding: 16px;
-  }
-
-  .stats-row {
-    grid-template-columns: 1fr;
-    gap: 16px;
-    margin-bottom: 24px;
-  }
-
-  .stat-card :deep(.el-card__body) {
-    padding: 24px 20px;
-  }
-
-  .stat-label {
-    font-size: 18px;
-  }
-
-  .stat-value {
-    font-size: 28px;
-  }
-
-  .circle-progress {
-    width: 160px;
-    height: 160px;
-  }
-
-  .circle-value {
-    font-size: 48px;
-  }
-
-  .circle-total {
-    font-size: 18px;
-  }
-
-  .chart-wrapper-large {
-    height: 350px;
-  }
-
-  .params-row :deep(.el-card__body) {
-    padding: 16px 20px;
-  }
-
-  .param-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
+/* 日志对话框样式 */
+.logs-dialog-content {
+  padding: 12px 0;
 }
 
-@media (max-width: 480px) {
-  .stat-card:nth-child(2) .stat-value {
-    font-size: 16px;
-  }
-
-  .refresh-countdown {
-    font-size: 12px;
-    padding: 8px 14px;
-  }
-
-  .chart-title {
-    font-size: 16px;
-  }
-}
-
-/* 导出对话框样式 */
-.export-dialog-content {
-  padding: 20px 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.date-range-label {
-  font-size: 15px;
-  font-weight: 600;
-  color: #2d3748;
-  margin-bottom: 12px;
-  text-align: center;
-  width: 100%;
-}
-
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.dialog-footer .el-button {
-  padding: 10px 24px;
+.logs-container {
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
-  font-weight: 600;
+  background-color: #1a1a2e;
+  padding: 12px;
+  max-height: 70vh;
+  height: 500px;
+  overflow-y: auto;
+  font-family: 'Courier New', 'Monaco', monospace;
+  font-size: 13px;
 }
 
+.log-line {
+  color: #d1d5db;
+  padding: 6px 8px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-left: 3px solid transparent;
+  margin-bottom: 4px;
+}
+
+.log-line:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.log-error {
+  color: #f87171;
+  border-left-color: #ef4444;
+}
+
+.log-warning {
+  color: #fbbf24;
+  border-left-color: #f59e0b;
+}
+
+.log-success {
+  color: #86efac;
+  border-left-color: #22c55e;
+}
+
+.logs-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.logs-container::-webkit-scrollbar-track {
+  background: #2a2a3e;
+  border-radius: 3px;
+}
+
+.logs-container::-webkit-scrollbar-thumb {
+  background: #4a4a6a;
+  border-radius: 3px;
+}
+
+.logs-container::-webkit-scrollbar-thumb:hover {
+  background: #5a5a7a;
+}
+
+.status-indicator:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+}
 </style>
 
