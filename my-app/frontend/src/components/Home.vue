@@ -135,7 +135,7 @@
       :close-on-click-modal="false"
     >
       <div class="logs-dialog-content">
-        <div class="logs-container">
+        <div class="logs-container" ref="logsContainerRef">
           <div
             v-for="(log, index) in systemLogs"
             :key="index"
@@ -186,7 +186,7 @@
 </template>
 
 <script setup lang="ts">
-import {ref, computed, onMounted, onUnmounted} from 'vue'
+import {ref, computed, onMounted, onUnmounted, watch} from 'vue'
 import {useRouter} from 'vue-router'
 import axios from 'axios'
 import Highcharts from 'highcharts'
@@ -346,8 +346,26 @@ const handleHistoryClick = () => {
 
 // 日志对话框相关
 const logsDialogVisible = ref(false)
+const logsContainerRef = ref<HTMLElement | null>(null)
 const systemLogs = ref<string[]>([])
 let logsRefreshInterval: ReturnType<typeof setInterval> | null = null
+
+// 自动滚动到日志底部
+const scrollLogsToBottom = () => {
+  if (logsContainerRef.value) {
+    // 使用 nextTick 确保 DOM 已更新
+    setTimeout(() => {
+      if (logsContainerRef.value) {
+        logsContainerRef.value.scrollTop = logsContainerRef.value.scrollHeight
+      }
+    }, 0)
+  }
+}
+
+// 监听 systemLogs 变化，自动滚动到底部
+watch(systemLogs, () => {
+  scrollLogsToBottom()
+}, { deep: true })
 
 // 获取MQTT日志
 const fetchMqttLogs = async () => {
