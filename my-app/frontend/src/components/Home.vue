@@ -186,7 +186,7 @@
 </template>
 
 <script setup lang="ts">
-import {ref, computed, onMounted, onUnmounted, watch} from 'vue'
+import {ref, computed, onMounted, onUnmounted, watch, nextTick} from 'vue'
 import {useRouter} from 'vue-router'
 import axios from 'axios'
 import Highcharts from 'highcharts'
@@ -351,21 +351,32 @@ const systemLogs = ref<string[]>([])
 let logsRefreshInterval: ReturnType<typeof setInterval> | null = null
 
 // 自动滚动到日志底部
-const scrollLogsToBottom = () => {
+const scrollLogsToBottom = async () => {
+  // 使用 nextTick 确保 DOM 已更新
+  await nextTick()
   if (logsContainerRef.value) {
-    // 使用 nextTick 确保 DOM 已更新
-    setTimeout(() => {
-      if (logsContainerRef.value) {
-        logsContainerRef.value.scrollTop = logsContainerRef.value.scrollHeight
-      }
-    }, 0)
+    logsContainerRef.value.scrollTop = logsContainerRef.value.scrollHeight
   }
 }
 
-// 监听 systemLogs 变化，自动滚动到底部
-watch(systemLogs, () => {
-  scrollLogsToBottom()
-}, { deep: true })
+// 记录上次最后一条日志内容
+let lastLogContent = ''
+
+// 监听 systemLogs 变化，通过比较最后一条日志内容来判断是否有新日志
+watch(systemLogs, (newLogs) => {
+  // 获取当前最后一条日志内容
+  const currentLastLog = newLogs.length > 0 ? newLogs[newLogs.length - 1] : ''
+
+  // 如果最后一条日志内容与上次不同，说明有新日志，需要滚动到底部
+  if (currentLastLog && currentLastLog !== lastLogContent) {
+    console.log(`[日志] 检测到新日志，自动滚动到底部`)
+    console.log(`[日志] 最新日志: ${currentLastLog.substring(0, 80)}...`)
+    scrollLogsToBottom()
+  }
+
+  // 更新记录的最后一条日志内容
+  lastLogContent = currentLastLog
+})
 
 // 获取MQTT日志
 const fetchMqttLogs = async () => {
