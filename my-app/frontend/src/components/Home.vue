@@ -545,44 +545,25 @@ const initCharts = () => {
     chartsMap.delete(chartId)
   }
 
-  // 收集所有时间点（用作X轴分类）
-  const timePointsSet = new Set<string>()
-  devicesWithData.value.forEach(device => {
-    device.voltage_data.forEach(d => {
-      timePointsSet.add(`${d.date} ${d.time}`)
-    })
-  })
-  const categories = Array.from(timePointsSet).sort()
-
-  // 将时间字符串转换为时间戳（毫秒）
-  const categoryTimestamps = categories.map(cat => {
-    return new Date(cat).getTime()
-  })
-
   // 为每个设备创建数据系列，颜色自动分配
   const colors = [
     "#1F77B4", "#FF7F0E", "#2CA02C", "#D62728", "#9467BD",
-    "#8C564B", "#EFC94C", "#17BECF", "#4C72B0", "#DD8452",
     "#55A868", "#C44E52", "#8172B3", "#937860", "#64B5CD",
     "#E99675", "#97BBCD", "#B5BD89", "#FF6F61", "#6A5ACD"
   ];
 
   const series = devicesWithData.value.map((device, index) => {
-    // 为当前设备的所有时间点创建数据映射
-    const dataMap = new Map<string, number>()
+    // 为当前设备创建数据序列，只添加有实际数据的点
+    const data: [number, number][] = []
+
     device.voltage_data.forEach(d => {
       const timePoint = `${d.date} ${d.time}`
-      dataMap.set(timePoint, d.avg_voltage)
+      const timestamp = new Date(timePoint).getTime()
+      data.push([timestamp, d.avg_voltage])
     })
 
-    // 生成完整的数据序列，使用 [时间戳, 值] 格式
-    const data = categories.map((cat, idx) => {
-      const voltage = dataMap.get(cat)
-      if (voltage !== undefined) {
-        return [categoryTimestamps[idx], voltage]
-      }
-      return [categoryTimestamps[idx], null]
-    })
+    // 按时间戳排序，确保数据点按时间顺序连接
+    data.sort((a, b) => a[0] - b[0])
 
     return {
       name: device.machine_name,
@@ -591,7 +572,8 @@ const initCharts = () => {
       type: 'line' as const,
       marker: {
         enabled: false
-      }
+      },
+      connectNulls: false  // 确保不连接缺失的数据点
     }
   })
 
@@ -666,7 +648,22 @@ const initCharts = () => {
       enabled: true,
       layout: 'horizontal',
       align: 'center',
-      verticalAlign: 'bottom'
+      verticalAlign: 'bottom',
+      itemStyle: {
+        fontSize: '14px',
+        fontWeight: '500',
+        cursor: 'pointer'
+      },
+      itemHoverStyle: {
+        color: '#000'
+      },
+      symbolWidth: 30,
+      symbolHeight: 16,
+      symbolRadius: 8,
+      itemDistance: 20,
+      padding: 15,
+      itemMarginTop: 8,
+      itemMarginBottom: 8
     },
     series: series,
     credits: {
@@ -688,7 +685,14 @@ const initCharts = () => {
             legend: {
               layout: 'horizontal',
               align: 'center',
-              verticalAlign: 'bottom'
+              verticalAlign: 'bottom',
+              itemStyle: {
+                fontSize: '13px',
+                fontWeight: '500'
+              },
+              symbolWidth: 25,
+              symbolHeight: 14,
+              itemDistance: 15
             }
           }
         }
