@@ -547,9 +547,9 @@ const initCharts = () => {
 
   // 为每个设备创建数据系列，颜色自动分配
   const colors = [
-    "#1F77B4", "#FF7F0E", "#2CA02C", "#D62728", "#9467BD",
-    "#55A868", "#C44E52", "#8172B3", "#937860", "#64B5CD",
-    "#E99675", "#97BBCD", "#B5BD89", "#FF6F61", "#6A5ACD"
+    '#1F77B4', '#FF7F0E', '#2CA02C', '#D62728', '#9467BD',
+    '#8C564B', '#E377C2', '#7F7F7F', '#BCBD22', '#17BECF',
+    '#FFA600', '#FF0054', '#00CC96', '#AB63FA', '#19D3F3'
   ];
 
   const series = devicesWithData.value.map((device, index) => {
@@ -577,8 +577,28 @@ const initCharts = () => {
     }
   })
 
+  // 计算所有数据的最大时间戳
+  let maxDataTimestamp = 0
+  series.forEach(s => {
+    if (s.data.length > 0) {
+      const lastPoint = s.data[s.data.length - 1]
+      if (lastPoint[0] > maxDataTimestamp) {
+        maxDataTimestamp = lastPoint[0]
+      }
+    }
+  })
+
+  // 获取 queryTime 的时间戳
+  const queryTimestamp = new Date(queryTime.value).getTime()
+
+  // 如果数据的最大时间小于 queryTime，则将 x 轴扩展到 queryTime
+  const xAxisMax = maxDataTimestamp < queryTimestamp ? queryTimestamp : undefined
+
   // 创建合并图表
   const newChart = Highcharts.chart(chartId, {
+    time: {
+      useUTC: false
+    },
     chart: {
       type: 'line' as const,
       height: 550
@@ -591,20 +611,25 @@ const initCharts = () => {
       title: {
         text: '时间'
       },
+      max: xAxisMax,  // 设置 x 轴最大值，如果数据时间小于 queryTime，则扩展到 queryTime
       labels: {
         rotation: 0,
         align: 'center',
+        useHTML: true,
+        formatter: function(this: any): string {
+          const date = new Date(this.value)
+          const month = String(date.getMonth() + 1).padStart(2, '0')
+          const day = String(date.getDate()).padStart(2, '0')
+          const hours = String(date.getHours()).padStart(2, '0')
+          const minutes = String(date.getMinutes()).padStart(2, '0')
+
+          // 日期和时间分行显示，使用不同的样式
+          return '<div style="text-align: center;">' +
+                 '<div style="color: #666; font-size: 11px; font-weight: 600;">' + month + '-' + day + '</div>' +
+                 '<div style="color: #333; font-size: 12px; font-weight: 700; margin-top: 2px;">' + hours + ':' + minutes + '</div>' +
+                 '</div>'
+        }
       },
-      dateTimeLabelFormats: {
-        millisecond: '%H:%M:%S.%L',
-        second: '%H:%M:%S',
-        minute: '%H:%M',
-        hour: '%H:%M',
-        day: '%m-%d',
-        week: '%m-%d',
-        month: '%Y-%m',
-        year: '%Y'
-      }
     },
     yAxis: {
       title: {
@@ -637,7 +662,7 @@ const initCharts = () => {
           if (point.y !== null && point.y !== undefined) {
             s += '<div style="margin: 4px 0; color: #333; font-weight: 500;">' +
                 '<span style="color: ' + point.color + '; font-weight: 700; margin-right: 6px;">●</span>' +
-                '<span style="color: ' + point.color + '; font-weight: 700;">' + point.series.name + ': ' + point.y.toFixed(2) + ' mV</span></div>'
+                '<span style="color: ' + point.color + '; font-weight: 700;">' + point.series.name + ': ' + point.y.toFixed(0) + ' mV</span></div>'
           }
         })
 
