@@ -328,7 +328,7 @@ def fetch_latest_device_data(page: int = 1, page_size: int = 90, upload_to_db: b
     headers = {
         "accept": "application/json, text/plain, */*",
         "accept-language": "zh-cn",
-        "authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOjY5NTM3MTc4MzYwMjI1NiwiVGVuYW50SWQiOjEzMDAwMDAwMDAxMDEsIkFjY291bnQiOiIwMDI2MDkwIiwiUmVhbE5hbWUiOiLmoZHpvpnlgaUiLCJBY2NvdW50VHlwZSI6Nzc3LCJPcmdJZCI6NjQ3MDE3NjIyMDg1NzA4LCJPcmdOYW1lIjoi55S16Kej5qe9Juezu-e7n-W8gOWPkemDqCIsIk9yZ1R5cGUiOiI1MDEiLCJpYXQiOjE3NjEyODcwMDUsIm5iZiI6MTc2MTI4NzAwNSwiZXhwIjoxNzYxODkxODA1LCJpc3MiOiJBZG1pbi5ORVQiLCJhdWQiOiJBZG1pbi5ORVQifQ.L6ZH-o2tkY2JJ4Vss97RJcY1QEoRgeGgy2wFo9gAbSk",
+        "authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOjY5NTM3MTc4MzYwMjI1NiwiVGVuYW50SWQiOjEzMDAwMDAwMDAxMDEsIkFjY291bnQiOiIwMDI2MDkwIiwiUmVhbE5hbWUiOiLmoZHpvpnlgaUiLCJBY2NvdW50VHlwZSI6Nzc3LCJPcmdJZCI6NjQ3MDE3NjIyMDg1NzA4LCJPcmdOYW1lIjoi55S16Kej5qe9Juezu-e7n-W8gOWPkemDqCIsIk9yZ1R5cGUiOiI1MDEiLCJpYXQiOjE3NjE1NTE2NzEsIm5iZiI6MTc2MTU1MTY3MSwiZXhwIjoxNzYyMTU2NDcxLCJpc3MiOiJBZG1pbi5ORVQiLCJhdWQiOiJBZG1pbi5ORVQifQ.fWvLYKC8M6loRQrWRR9YH9YEnrxU-IHGhibH0qFcmBE",
         "content-type": "application/json-patch+json",
         "sec-ch-ua": '"Chromium";v="140", "Not=A?Brand";v="24", "Google Chrome";v="140"',
         "sec-ch-ua-mobile": "?0",
