@@ -12,11 +12,9 @@ from .mqtt import router as mqtt_router, start_mqtt_client, stop_mqtt_client
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时执行
-    print("[应用] 正在启动...")
     start_mqtt_client()
     yield
     # 关闭时执行
-    print("[应用] 正在关闭...")
     stop_mqtt_client()
 
 

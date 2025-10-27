@@ -87,6 +87,10 @@
         </template>
         <template #default>
           <div class="button-group">
+            <el-button type="info" class="action-btn" @click="handleChangelogClick">
+              <span class="btn-icon">📝</span>
+              更新日志
+            </el-button>
             <el-button type="success" class="action-btn" @click="handleExportData">
               <span class="btn-icon">📥</span>
               导出数据
@@ -99,6 +103,33 @@
         </template>
       </el-card>
     </div>
+
+    <!-- 设备实时电压状态卡片 -->
+    <el-card class="voltage-status-card">
+      <template #header>
+        <div class="voltage-status-header">
+          <span class="voltage-status-title">设备实时电压状态</span>
+          <span class="voltage-status-subtitle">（绿色：运行中 | 灰色：停止）</span>
+        </div>
+      </template>
+      <template #default>
+        <div class="devices-grid">
+          <div
+              v-for="device in allDevicesStatus"
+              :key="device.machine_name"
+              class="device-item"
+              :class="{ 'running': device.isRunning, 'stopped': !device.isRunning }"
+          >
+            <div class="device-status-dot" :class="{ 'running': device.isRunning, 'stopped': !device.isRunning }"></div>
+            <div class="device-name">{{ device.machine_name }}</div>
+            <div class="device-voltage">
+              <span class="voltage-value">{{ device.voltage }}</span>
+              <span class="voltage-unit">mV</span>
+            </div>
+          </div>
+        </div>
+      </template>
+    </el-card>
 
     <!-- 设备电压图表 -->
     <div v-if="loading" class="charts-container">
@@ -129,18 +160,18 @@
 
     <!-- 日志对话框 -->
     <el-dialog
-      v-model="logsDialogVisible"
-      title="系统日志"
-      width="80%"
-      :close-on-click-modal="false"
+        v-model="logsDialogVisible"
+        title="系统日志"
+        width="80%"
+        :close-on-click-modal="false"
     >
       <div class="logs-dialog-content">
         <div class="logs-container" ref="logsContainerRef">
           <div
-            v-for="(log, index) in systemLogs"
-            :key="index"
-            class="log-line"
-            :class="{'log-error': log.includes('[错误]'), 'log-warning': log.includes('[警告]'), 'log-success': log.includes('[成功]')}"
+              v-for="(log, index) in systemLogs"
+              :key="index"
+              class="log-line"
+              :class="{'log-error': log.includes('[错误]'), 'log-warning': log.includes('[警告]'), 'log-success': log.includes('[成功]')}"
           >
             {{ log }}
           </div>
@@ -156,21 +187,21 @@
 
     <!-- 导出数据对话框 -->
     <el-dialog
-      v-model="exportDialogVisible"
-      title="导出数据"
-      width="500px"
-      :close-on-click-modal="false"
+        v-model="exportDialogVisible"
+        title="导出数据"
+        width="500px"
+        :close-on-click-modal="false"
     >
       <div class="export-dialog-content">
         <div class="date-range-label">选择时间范围</div>
         <el-date-picker
-          v-model="exportDateRange"
-          type="datetimerange"
-          range-separator="至"
-          start-placeholder="起始时间"
-          end-placeholder="截止时间"
-          format="YYYY-MM-DD HH:mm:ss"
-          style="width: 90%"
+            v-model="exportDateRange"
+            type="datetimerange"
+            range-separator="至"
+            start-placeholder="起始时间"
+            end-placeholder="截止时间"
+            format="YYYY-MM-DD HH:mm:ss"
+            style="width: 90%"
         />
       </div>
       <template #footer>
@@ -179,6 +210,42 @@
           <el-button type="primary" @click="confirmExport" :loading="exportLoading">
             {{ exportLoading ? '导出中...' : '确认导出' }}
           </el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- 更新日志对话框 -->
+    <el-dialog
+        v-model="changelogDialogVisible"
+        title="更新日志"
+        width="700px"
+        :close-on-click-modal="false"
+    >
+      <div class="changelog-dialog-content">
+        <div
+            v-for="(log, index) in changelogData"
+            :key="index"
+            class="changelog-item"
+        >
+          <div class="changelog-header">
+            <div class="changelog-version">{{ log.version }}</div>
+            <div class="changelog-date">{{ log.date }}</div>
+          </div>
+          <div class="changelog-content">
+            <div
+                v-for="(item, idx) in log.changes"
+                :key="idx"
+                class="changelog-change"
+            >
+              <span class="changelog-icon">•</span>
+              <span class="changelog-text">{{ item }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button type="primary" @click="changelogDialogVisible = false">关闭</el-button>
         </div>
       </template>
     </el-dialog>
@@ -232,18 +299,57 @@ const serverStatus = ref<'running' | 'stopped'>('stopped') // 默认为未运行
 let refreshInterval: ReturnType<typeof setInterval> | null = null
 let countdownInterval: ReturnType<typeof setInterval> | null = null
 
-// 计算属性
-const runningDevicesCount = computed(() => {
-  return devicesData.value.filter(device => {
-    // 设备有数据，且最近一次电压值 >= 100 才算正在运行
-    if (device.voltage_data.length === 0) return false
-    const lastVoltage = device.voltage_data[device.voltage_data.length - 1]
-    return lastVoltage.avg_voltage >= 100
-  }).length
-})
 
 const devicesWithData = computed(() => {
   return devicesData.value.filter(device => device.voltage_data.length > 0)
+})
+
+// 计算所有15个设备的实时状态
+const allDevicesStatus = computed(() => {
+  const result = []
+
+  for (let i = 1; i <= 15; i++) {
+    const machineName = `${i}#`
+    const device = devicesData.value.find(d => d.machine_name === machineName)
+
+    let voltage = 0
+    let isRunning = false
+
+    if (device && device.voltage_data.length > 0) {
+      // 获取最后一条数据
+      const lastData = device.voltage_data[device.voltage_data.length - 1]
+      const lastDataTime = new Date(`${lastData.date} ${lastData.time}`).getTime()
+      const queryTimeMs = new Date(queryTime.value).getTime()
+
+      // 计算时间差（毫秒）
+      const timeDiff = queryTimeMs - lastDataTime
+      const halfHourMs = 30 * 60 * 1000 // 30分钟的毫秒数
+
+      // 如果最近一次数据在半小时内
+      if (timeDiff <= halfHourMs) {
+        voltage = Math.round(lastData.avg_voltage)
+        // 只要电压不是0就算运行中
+        isRunning = voltage !== 0
+      } else {
+        // 超过半小时，电压显示为0，状态为未运行
+        voltage = 0
+        isRunning = false
+      }
+    }
+
+    result.push({
+      machine_name: machineName,
+      voltage: voltage,
+      isRunning: isRunning
+    })
+  }
+
+  return result
+})
+
+// 计算运行中的设备数量（从卡片状态中统计）
+const runningDevicesCount = computed(() => {
+  return allDevicesStatus.value.filter(device => device.isRunning).length
 })
 
 // 格式化倒计时为 X:Y 格式（分:秒）
@@ -315,10 +421,10 @@ const startAutoRefresh = () => {
 
   // 每60秒检查一次MQTT连接状态
   const mqttStatusInterval = setInterval(() => {
-    fetchMqttStatus()
-  }, 60000)
+        fetchMqttStatus()
+      }, 60000)
 
-  // 保存MQTT状态检查定时器的引用，以便后续清理
+      // 保存MQTT状态检查定时器的引用，以便后续清理
   ;(window as any).__mqttStatusInterval = mqttStatusInterval
 }
 
@@ -431,6 +537,29 @@ const getDefaultDateRange = (): [Date, Date] => {
 
 const exportDateRange = ref<[Date, Date]>(getDefaultDateRange())
 
+// 更新日志相关
+const changelogDialogVisible = ref(false)
+
+// 更新日志数据（本地数据）
+const changelogData = [
+  {
+    version: 'v1.0.0',
+    date: '2025-10-27',
+    changes: [
+      '新增主页看板, 显示当前所有设备的运行状态,每5分钟自动刷新数据',
+      '新增更新日志功能, 可查看系统历史更新记录',
+      '所有数据查看迁移至历史记录页面, 优化主页面布局',
+      '新增数据导出功能, 可选择时间范围(默认一个月)导出所有设备的数据为CSV文件',
+      '新增MQTT中转服务器状态显示, 实时查看服务器连接状态及日志',
+    ]
+  },
+]
+
+// 处理更新日志按钮点击
+const handleChangelogClick = () => {
+  changelogDialogVisible.value = true
+}
+
 // 处理导出数据
 const handleExportData = () => {
   // 每次打开对话框时重新设置默认时间范围
@@ -474,7 +603,7 @@ const confirmExport = async () => {
     })
 
     // 创建下载链接
-    const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' })
+    const blob = new Blob([response.data], {type: 'text/csv;charset=utf-8;'})
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -616,7 +745,7 @@ const initCharts = () => {
         rotation: 0,
         align: 'center',
         useHTML: true,
-        formatter: function(this: any): string {
+        formatter: function (this: any): string {
           const date = new Date(this.value)
           const month = String(date.getMonth() + 1).padStart(2, '0')
           const day = String(date.getDate()).padStart(2, '0')
@@ -625,9 +754,9 @@ const initCharts = () => {
 
           // 日期和时间分行显示，使用不同的样式
           return '<div style="text-align: center;">' +
-                 '<div style="color: #666; font-size: 11px; font-weight: 600;">' + month + '-' + day + '</div>' +
-                 '<div style="color: #333; font-size: 12px; font-weight: 700; margin-top: 2px;">' + hours + ':' + minutes + '</div>' +
-                 '</div>'
+              '<div style="color: #666; font-size: 11px; font-weight: 600;">' + month + '-' + day + '</div>' +
+              '<div style="color: #333; font-size: 12px; font-weight: 700; margin-top: 2px;">' + hours + ':' + minutes + '</div>' +
+              '</div>'
         }
       },
     },
@@ -1123,6 +1252,7 @@ onUnmounted(() => {
   justify-content: center !important;
   gap: 6px !important;
   width: auto !important;
+  margin-left: 0 !important;
 }
 
 .action-btn::before {
@@ -1377,6 +1507,214 @@ onUnmounted(() => {
   opacity: 0.5;
 }
 
+/* 设备实时电压状态卡片样式 */
+.voltage-status-card {
+  margin-bottom: 32px;
+  position: relative;
+  z-index: 1;
+}
+
+.voltage-status-card :deep(.el-card) {
+  border: none;
+  border-radius: 20px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+}
+
+.voltage-status-card :deep(.el-card__header) {
+  padding: 20px 28px;
+  border-bottom: 2px solid #e2e8f0;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+}
+
+.voltage-status-card :deep(.el-card__body) {
+  padding: 28px;
+}
+
+.voltage-status-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.voltage-status-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0284c7;
+  letter-spacing: 0.5px;
+}
+
+.voltage-status-subtitle {
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+/* 设备网格布局 - 一行8个 */
+.devices-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 16px;
+  padding: 8px 0;
+}
+
+/* 设备项 */
+.device-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 16px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.device-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: #e2e8f0;
+  transition: all 0.3s ease;
+}
+
+.device-item.running::before {
+  background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
+}
+
+.device-item.stopped::before {
+  background: #9ca3af;
+}
+
+.device-item:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+}
+
+.device-item.running {
+  border-color: #10b981;
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+}
+
+.device-item.stopped {
+  border-color: #d1d5db;
+  background: #f9fafb;
+}
+
+/* 设备状态圆点 */
+.device-status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-bottom: 12px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.device-status-dot.running {
+  background: #10b981;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.6), 0 2px 8px rgba(16, 185, 129, 0.4);
+  animation: pulse-dot 2s infinite;
+}
+
+.device-status-dot.stopped {
+  background: #9ca3af;
+  box-shadow: 0 2px 8px rgba(107, 114, 128, 0.3);
+}
+
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.6), 0 2px 8px rgba(16, 185, 129, 0.4);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.3);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.8), 0 2px 12px rgba(16, 185, 129, 0.6);
+  }
+}
+
+/* 设备名称 */
+.device-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+/* 设备电压 */
+.device-voltage {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.voltage-value {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.device-item.running .voltage-value {
+  color: #059669;
+}
+
+.device-item.stopped .voltage-value {
+  color: #6b7280;
+}
+
+.voltage-unit {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+/* 响应式布局 */
+@media (max-width: 1600px) {
+  .devices-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+@media (max-width: 1200px) {
+  .devices-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .devices-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+
+  .device-item {
+    padding: 12px 8px;
+  }
+
+  .voltage-status-title {
+    font-size: 18px;
+  }
+
+  .voltage-status-subtitle {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .devices-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 /* 日志对话框样式 */
 .logs-dialog-content {
   padding: 12px 0;
@@ -1444,6 +1782,115 @@ onUnmounted(() => {
 .status-indicator:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+}
+
+/* 更新日志对话框样式 */
+.changelog-dialog-content {
+  padding: 12px 0;
+  max-height: 500px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.changelog-item {
+  margin-bottom: 24px;
+  padding: 20px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 12px;
+  border-left: 4px solid #0ea5e9;
+  transition: all 0.3s ease;
+}
+
+.changelog-item:hover {
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.changelog-item:last-child {
+  margin-bottom: 0;
+}
+
+.changelog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.changelog-version {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0284c7;
+  letter-spacing: 0.5px;
+}
+
+.changelog-date {
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+  background: white;
+  padding: 4px 12px;
+  border-radius: 12px;
+}
+
+.changelog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.changelog-change {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.changelog-icon {
+  color: #0ea5e9;
+  font-size: 20px;
+  font-weight: 700;
+  margin-top: -2px;
+}
+
+.changelog-text {
+  flex: 1;
+  color: #475569;
+  font-weight: 500;
+}
+
+.changelog-dialog-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.changelog-dialog-content::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.changelog-dialog-content::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.changelog-dialog-content::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* 导出对话框样式 */
+.export-dialog-content {
+  padding: 20px 10px;
+}
+
+.date-range-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 12px;
 }
 </style>
 
