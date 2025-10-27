@@ -18,7 +18,7 @@ MQTT_TOPIC = "WinCC/#"  # 订阅WinCC下的所有主题
 mqtt_client: Optional[mqtt.Client] = None
 mqtt_connected = False
 mqtt_lock = threading.Lock()
-mqtt_logs = deque(maxlen=100)  # 最多保存100条日志
+mqtt_logs = deque(maxlen=2000)  # 最多保存2000条日志
 
 
 def on_connect(client, userdata, flags, rc):
@@ -83,7 +83,7 @@ def on_message(client, userdata, msg):
         payload = msg.payload.decode('utf-8')
 
         # 限制日志消息长度
-        log_payload = payload[:100] if len(payload) > 100 else payload
+        log_payload = payload[:500] if len(payload) > 500 else payload
         message_msg = f"[MQTT] 收到消息 - 主题: {topic}, 数据: {log_payload}"
 
         # 记录日志
