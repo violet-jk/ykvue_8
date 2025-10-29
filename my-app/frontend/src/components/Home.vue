@@ -119,6 +119,7 @@
               :key="device.machine_name"
               class="device-item"
               :class="{ 'running': device.isRunning, 'stopped': !device.isRunning }"
+              @click="handleDeviceClick(device.machine_name)"
           >
             <div class="device-status-dot" :class="{ 'running': device.isRunning, 'stopped': !device.isRunning }"></div>
             <div class="device-name">{{ device.machine_name }}</div>
@@ -246,6 +247,26 @@
       <template #footer>
         <div class="dialog-footer">
           <el-button type="primary" @click="changelogDialogVisible = false">关闭</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- 设备详细图表对话框 -->
+    <el-dialog
+        v-model="deviceChartDialogVisible"
+        :title="`${selectedDeviceName} 电压趋势图`"
+        width="85%"
+        :close-on-click-modal="false"
+        align-center
+        destroy-on-close
+        top="5vh"
+    >
+      <div class="device-chart-container">
+        <div id="device-detail-chart" class="device-detail-chart"></div>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button type="primary" @click="deviceChartDialogVisible = false">关闭</el-button>
         </div>
       </template>
     </el-dialog>
@@ -540,6 +561,11 @@ const exportDateRange = ref<[Date, Date]>(getDefaultDateRange())
 // 更新日志相关
 const changelogDialogVisible = ref(false)
 
+// 设备详细图表对话框相关
+const deviceChartDialogVisible = ref(false)
+const selectedDeviceName = ref('')
+let deviceDetailChart: Highcharts.Chart | null = null
+
 // 更新日志数据（本地数据）
 const changelogData = [
   {
@@ -654,6 +680,303 @@ const selectDay = (day: number) => {
   // 保存到localStorage
   localStorage.setItem('selectedDay', day.toString())
   fetchOverviewData()
+}
+
+// 处理设备卡片点击
+const handleDeviceClick = (machineName: string) => {
+  selectedDeviceName.value = machineName
+  deviceChartDialogVisible.value = true
+
+  // 使用nextTick确保dialog渲染完成后再创建图表
+  nextTick(() => {
+    createDeviceDetailChart(machineName)
+  })
+}
+
+// 创建设备详细图表
+const createDeviceDetailChart = (machineName: string) => {
+  // 查找该设备的数据
+  const device = devicesData.value.find(d => d.machine_name === machineName)
+
+  if (!device || device.voltage_data.length === 0) {
+    ElMessage.warning('该设备暂无数据')
+    return
+  }
+
+  const chartElement = document.getElementById('device-detail-chart')
+  if (!chartElement) return
+
+  // 销毁旧图表实例
+  if (deviceDetailChart) {
+    deviceDetailChart.destroy()
+    deviceDetailChart = null
+  }
+
+  // 准备数据
+  const data: [number, number][] = []
+  device.voltage_data.forEach(d => {
+    const timePoint = `${d.date} ${d.time}`
+    const timestamp = new Date(timePoint).getTime()
+    data.push([timestamp, d.avg_voltage])
+  })
+
+  // 按时间戳排序
+  data.sort((a, b) => a[0] - b[0])
+
+  // 获取设备在总览图中的颜色
+  const colors = [
+    '#1F77B4', '#FF7F0E', '#2CA02C', '#D62728', '#9467BD',
+    '#8C564B', '#E377C2', '#7F7F7F', '#BCBD22', '#17BECF',
+    '#FFA600', '#FF0054', '#00CC96', '#AB63FA', '#19D3F3'
+  ]
+
+  // 找到设备在devicesWithData中的索引，以获取对应的颜色
+  const deviceIndex = devicesWithData.value.findIndex(d => d.machine_name === machineName)
+  const deviceColor = colors[deviceIndex % colors.length]
+
+  // 计算最大时间戳
+  let maxDataTimestamp = 0
+  if (data.length > 0) {
+    maxDataTimestamp = data[data.length - 1][0]
+  }
+
+  // 获取 queryTime 的时间戳
+  const queryTimestamp = new Date(queryTime.value).getTime()
+  const xAxisMax = maxDataTimestamp < queryTimestamp ? queryTimestamp : undefined
+
+  // 创建图表
+  deviceDetailChart = Highcharts.chart('device-detail-chart', {
+    time: {
+      useUTC: false
+    },
+    chart: {
+      type: 'line' as const,
+      height: 600,
+      marginBottom: 100,
+      marginTop: 80,
+      spacingBottom: 15,
+      spacingRight: 15,
+      spacingLeft: 15,
+      spacingTop: 10
+    },
+    title: {
+      text: `${machineName} 电压趋势`,
+      style: {
+        fontSize: '22px',
+        fontWeight: 'bold',
+        color: '#1e293b'
+      }
+    },
+    subtitle: {
+      text: `数据点数: ${data.length} | 时间范围: ${selectedDay.value === 1 ? '最近1天' : '最近7天'}`,
+      style: {
+        fontSize: '14px',
+        color: '#64748b'
+      }
+    },
+    xAxis: {
+      type: 'datetime',
+      title: {
+        text: '时间',
+        style: {
+          fontSize: '16px',
+          fontWeight: '600',
+          color: '#334155'
+        },
+        margin: 20
+      },
+      max: xAxisMax,
+      labels: {
+        rotation: 0,
+        align: 'center',
+        useHTML: true,
+        style: {
+          fontSize: '13px'
+        },
+        y: 35,
+        formatter: function (this: any): string {
+          const date = new Date(this.value)
+          const month = String(date.getMonth() + 1).padStart(2, '0')
+          const day = String(date.getDate()).padStart(2, '0')
+          const hours = String(date.getHours()).padStart(2, '0')
+          const minutes = String(date.getMinutes()).padStart(2, '0')
+
+          return '<div style="text-align: center;">' +
+              '<div style="color: #666; font-size: 13px; font-weight: 600;">' + month + '-' + day + '</div>' +
+              '<div style="color: #333; font-size: 14px; font-weight: 700; margin-top: 2px;">' + hours + ':' + minutes + '</div>' +
+              '</div>'
+        }
+      },
+      gridLineWidth: 1,
+      gridLineColor: '#f1f5f9'
+    },
+    yAxis: {
+      title: {
+        text: '平均电压值 (mV)',
+        style: {
+          fontSize: '16px',
+          fontWeight: '600',
+          color: '#334155'
+        }
+      },
+      min: 0,
+      labels: {
+        style: {
+          fontSize: '13px',
+          color: '#64748b'
+        }
+      },
+      gridLineWidth: 1,
+      gridLineColor: '#f1f5f9'
+    },
+    tooltip: {
+      backgroundColor: 'rgba(255, 255, 255, 0.95)',
+      borderColor: '#ddd',
+      borderRadius: 8,
+      borderWidth: 1,
+      padding: 12,
+      useHTML: true,
+      formatter: function (this: any): string {
+        const date = new Date(this.x)
+        const year = date.getFullYear()
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const day = String(date.getDate()).padStart(2, '0')
+        const hours = String(date.getHours()).padStart(2, '0')
+        const minutes = String(date.getMinutes()).padStart(2, '0')
+        const seconds = String(date.getSeconds()).padStart(2, '0')
+        const formattedTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+
+        let s = '<div style="color: #333; font-weight: 700; margin-bottom: 8px; font-size: 14px;">' + formattedTime + '</div>'
+        s += '<div style="margin: 4px 0; color: #333; font-weight: 500; font-size: 14px;">' +
+            '<span style="color: ' + deviceColor + '; font-weight: 700; margin-right: 6px;">●</span>' +
+            '<span style="color: ' + deviceColor + '; font-weight: 700;">电压: ' + this.y.toFixed(0) + ' mV</span></div>'
+
+        return s
+      }
+    } as any,
+    legend: {
+      enabled: true,
+      layout: 'horizontal',
+      align: 'center',
+      verticalAlign: 'top',
+      y: 10,
+      itemStyle: {
+        fontSize: '14px',
+        fontWeight: '600',
+        color: '#334155'
+      }
+    },
+    series: [{
+      name: `${machineName} - 电压`,
+      data: data,
+      color: deviceColor,
+      type: 'line' as const,
+      lineWidth: 3,
+      marker: {
+        enabled: false,
+        radius: 3,
+        symbol: 'circle'
+      },
+      states: {
+        hover: {
+          lineWidthPlus: 2
+        }
+      },
+      dataLabels: {
+        enabled: false
+      }
+    }],
+    credits: {
+      enabled: false
+    },
+    responsive: {
+      rules: [
+        {
+          condition: {
+            maxWidth: 1400
+          },
+          chartOptions: {
+            chart: {
+              height: 550,
+              marginBottom: 90
+            },
+            title: {
+              style: {
+                fontSize: '20px'
+              }
+            },
+            xAxis: {
+              labels: {
+                y: 30,
+                style: {
+                  fontSize: '12px'
+                }
+              }
+            }
+          }
+        },
+        {
+          condition: {
+            maxWidth: 800
+          },
+          chartOptions: {
+            chart: {
+              height: 450,
+              marginBottom: 80
+            },
+            title: {
+              style: {
+                fontSize: '18px'
+              }
+            },
+            subtitle: {
+              style: {
+                fontSize: '12px'
+              }
+            },
+            xAxis: {
+              labels: {
+                rotation: -30,
+                align: 'right',
+                y: 20,
+                style: {
+                  fontSize: '11px'
+                }
+              }
+            }
+          }
+        },
+        {
+          condition: {
+            maxWidth: 500
+          },
+          chartOptions: {
+            chart: {
+              height: 350,
+              marginBottom: 70
+            },
+            title: {
+              style: {
+                fontSize: '16px'
+              }
+            },
+            xAxis: {
+              labels: {
+                rotation: -45,
+                align: 'right',
+                y: 15,
+                style: {
+                  fontSize: '10px'
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  } as any)
+
+  console.log('图表创建完成')
 }
 
 // 初始化图表
@@ -872,6 +1195,11 @@ onUnmounted(() => {
   if (logsRefreshInterval) {
     clearInterval(logsRefreshInterval)
     logsRefreshInterval = null
+  }
+  // 清理设备详细图表
+  if (deviceDetailChart) {
+    deviceDetailChart.destroy()
+    deviceDetailChart = null
   }
 })
 </script>
@@ -1571,6 +1899,7 @@ onUnmounted(() => {
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
+  cursor: pointer;
 }
 
 .device-item::before {
@@ -1594,7 +1923,13 @@ onUnmounted(() => {
 
 .device-item:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+  border-color: #0ea5e9;
+}
+
+.device-item:active {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .device-item.running {
@@ -1891,6 +2226,57 @@ onUnmounted(() => {
   font-weight: 600;
   color: #2d3748;
   margin-bottom: 12px;
+}
+
+/* 设备详细图表对话框样式 */
+.device-chart-container {
+  width: 100%;
+  height: auto;
+  padding: 15px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.device-detail-chart {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+/* 确保dialog body不溢出 */
+:deep(.el-dialog__body) {
+  padding: 20px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: 75vh;
+  box-sizing: border-box;
+}
+
+:deep(.el-dialog__footer) {
+  padding: 15px 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+:deep(.el-dialog) {
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+:deep(.el-dialog__header) {
+  padding: 20px;
+  border-bottom: 1px solid #e5e7eb;
 }
 </style>
 

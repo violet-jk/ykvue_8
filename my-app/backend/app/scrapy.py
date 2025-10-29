@@ -1,5 +1,5 @@
 # 临时方案 爬取数据 token每7天需要更换
-
+# 弃用此方案
 import requests
 import urllib3
 import pymysql
