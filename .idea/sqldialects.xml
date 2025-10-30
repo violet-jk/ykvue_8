@@ -2,5 +2,6 @@
 <project version="4">
   <component name="SqlDialectMappings">
     <file url="file://$USER_HOME$/Documents/WXWork/1688858379682396/Cache/File/2025-10/wincc_input.sql" dialect="MySQL" />
+    <file url="file://$PROJECT_DIR$/my-app/backend/app/wincc_table.sql" dialect="MySQL" />
   </component>
 </project>
