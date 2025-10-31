@@ -27,7 +27,7 @@ def get_db_connection():
 @router.get("/device_list")
 async def get_device_list():
     """
-    获取 test 表中所有唯一的 machine_name 和 machine_model 组合
+    获取 wincc 表中所有唯一的 machine_name 和 machine_model 组合
     """
     connection = get_db_connection()
     cursor = connection.cursor(pymysql.cursors.DictCursor)
@@ -35,7 +35,7 @@ async def get_device_list():
     try:
         sql = """
               SELECT DISTINCT machine_name, machine_model
-              FROM test
+              FROM wincc
               WHERE machine_name IS NOT NULL
                 AND machine_model IS NOT NULL
               ORDER BY machine_name, machine_model \
@@ -57,7 +57,7 @@ async def get_device_list():
 @router.get("/one_device/cell")
 async def get_one_device(machine_name: str, machine_model: str):
     """
-    根据 machine_name 和 machine_model 从 test 表获取数据
+    根据 machine_name 和 machine_model 从 wincc 表获取数据
     """
     connection = get_db_connection()
     cursor = connection.cursor(pymysql.cursors.DictCursor)
@@ -65,7 +65,7 @@ async def get_one_device(machine_name: str, machine_model: str):
     try:
         sql = '''
               SELECT date, time, cell_1, cell_2, cell_3, cell_4, cell_5, cell_6, cell_7, cell_8, cell_9, cell_10, cell_11, cell_12, cell_13, cell_14, cell_15, cell_16, cell_17, cell_18, cell_19, cell_20
-              FROM test
+              FROM wincc
               WHERE machine_name = %s
                 AND machine_model = %s
               ORDER BY date, time \
@@ -217,7 +217,7 @@ async def get_one_device(machine_name: str, machine_model: str):
 @router.get("/one_device/voltage_avg")
 async def get_voltage_avg(machine_name: str, machine_model: str, start_time: str):
     """
-    根据 machine_name 和 machine_model 从 test 表获取 avg_voltage 数据
+    根据 machine_name 和 machine_model 从 wincc 表获取 avg_voltage 数据
     使用传入的 start_time 作为统一的起始时间
     """
     connection = get_db_connection()
@@ -226,7 +226,7 @@ async def get_voltage_avg(machine_name: str, machine_model: str, start_time: str
     try:
         sql = '''
               SELECT date, time, avg_voltage
-              FROM test
+              FROM wincc
               WHERE machine_name = %s
                 AND machine_model = %s
                 AND avg_voltage IS NOT NULL
@@ -301,7 +301,7 @@ async def get_voltage_avg(machine_name: str, machine_model: str, start_time: str
 @router.get("/one_device/voltage_range")
 async def get_voltage_range(machine_name: str, machine_model: str, start_time: str):
     """
-    根据 machine_name 和 machine_model 从 test 表获取 voltage_range 数据
+    根据 machine_name 和 machine_model 从 wincc 表获取 voltage_range 数据
     使用传入的 start_time 作为统一的起始时间
     """
     connection = get_db_connection()
@@ -310,7 +310,7 @@ async def get_voltage_range(machine_name: str, machine_model: str, start_time: s
     try:
         sql = '''
               SELECT date, time, voltage_range
-              FROM test
+              FROM wincc
               WHERE machine_name = %s
                 AND machine_model = %s
                 AND voltage_range IS NOT NULL
@@ -382,7 +382,7 @@ async def get_voltage_range(machine_name: str, machine_model: str, start_time: s
 @router.get("/one_device/pump_pressure")
 async def get_pump_pressure(machine_name: str, machine_model: str, start_time: str):
     """
-    根据 machine_name 和 machine_model 从 test 表获取 pump_pressure 数据
+    根据 machine_name 和 machine_model 从 wincc 表获取 pump_pressure 数据
     使用传入的 start_time 作为统一的起始时间
     """
     connection = get_db_connection()
@@ -391,7 +391,7 @@ async def get_pump_pressure(machine_name: str, machine_model: str, start_time: s
     try:
         sql = '''
               SELECT date, time, pump_pressure
-              FROM test
+              FROM wincc
               WHERE machine_name = %s
                 AND machine_model = %s
                 AND pump_pressure IS NOT NULL
@@ -463,7 +463,7 @@ async def get_pump_pressure(machine_name: str, machine_model: str, start_time: s
 @router.get("/one_device/specific_gravity")
 async def get_specific_gravity(machine_name: str, machine_model: str, start_time: str):
     """
-    根据 machine_name 和 machine_model 从 test 表获取 specific_gravity 数据
+    根据 machine_name 和 machine_model 从 wincc 表获取 specific_gravity 数据
     使用传入的 start_time 作为统一的起始时间
     """
     connection = get_db_connection()
@@ -472,7 +472,7 @@ async def get_specific_gravity(machine_name: str, machine_model: str, start_time
     try:
         sql = '''
               SELECT date, time, specific_gravity
-              FROM test
+              FROM wincc
               WHERE machine_name = %s
                 AND machine_model = %s
                 AND specific_gravity IS NOT NULL
@@ -544,7 +544,7 @@ async def get_specific_gravity(machine_name: str, machine_model: str, start_time
 @router.get("/one_device/hydrogen_flow_meter")
 async def get_hydrogen_flow_meter(machine_name: str, machine_model: str, start_time: str):
     """
-    根据 machine_name 和 machine_model 从 test 表获取 hydrogen_flow_meter 数据
+    根据 machine_name 和 machine_model 从 wincc 表获取 hydrogen_flow_meter 数据
     使用传入的 start_time 作为统一的起始时间
     """
     connection = get_db_connection()
@@ -553,7 +553,7 @@ async def get_hydrogen_flow_meter(machine_name: str, machine_model: str, start_t
     try:
         sql = '''
               SELECT date, time, hydrogen_flow_meter
-              FROM test
+              FROM wincc
               WHERE machine_name = %s
                 AND machine_model = %s
                 AND hydrogen_flow_meter IS NOT NULL
@@ -625,7 +625,7 @@ async def get_hydrogen_flow_meter(machine_name: str, machine_model: str, start_t
 @router.get("/one_device/inlet_outlet_pressure")
 async def get_inlet_outlet_pressure(machine_name: str, machine_model: str, start_time: str):
     """
-    根据 machine_name 和 machine_model 从 test 表获取 inlet_pressure 和 oxygen_outlet_pressure 数据
+    根据 machine_name 和 machine_model 从 wincc 表获取 inlet_pressure 和 oxygen_outlet_pressure 数据
     使用传入的 start_time 作为统一的起始时间
     """
     connection = get_db_connection()
@@ -634,7 +634,7 @@ async def get_inlet_outlet_pressure(machine_name: str, machine_model: str, start
     try:
         sql = '''
               SELECT date, time, inlet_pressure, oxygen_outlet_pressure
-              FROM test
+              FROM wincc
               WHERE machine_name = %s
                 AND machine_model = %s
                 AND inlet_pressure IS NOT NULL
@@ -704,7 +704,7 @@ async def get_inlet_outlet_pressure(machine_name: str, machine_model: str, start
 @router.get("/one_device/oxygen_hydrogen_outlet_pressure")
 async def get_oxygen_hydrogen_outlet_pressure(machine_name: str, machine_model: str, start_time: str):
     """
-    根据 machine_name 和 machine_model 从 test 表获取 oxygen_outlet_pressure 和 hydrogen_outlet_pressure 数据
+    根据 machine_name 和 machine_model 从 wincc 表获取 oxygen_outlet_pressure 和 hydrogen_outlet_pressure 数据
     使用传入的 start_time 作为统一的起始时间
     """
     connection = get_db_connection()
@@ -713,7 +713,7 @@ async def get_oxygen_hydrogen_outlet_pressure(machine_name: str, machine_model: 
     try:
         sql = '''
               SELECT date, time, oxygen_outlet_pressure, hydrogen_outlet_pressure
-              FROM test
+              FROM wincc
               WHERE machine_name = %s
                 AND machine_model = %s
                 AND oxygen_outlet_pressure IS NOT NULL
@@ -781,7 +781,7 @@ async def get_oxygen_hydrogen_outlet_pressure(machine_name: str, machine_model: 
 @router.get("/one_device/oxygen_hydrogen_outlet_temp")
 async def get_oxygen_hydrogen_outlet_temp(machine_name: str, machine_model: str, start_time: str):
     """
-    根据 machine_name 和 machine_model 从 test 表获取 oxygen_outlet_temp 和 hydrogen_outlet_temp 数据
+    根据 machine_name 和 machine_model 从 wincc 表获取 oxygen_outlet_temp 和 hydrogen_outlet_temp 数据
     使用传入的 start_time 作为统一的起始时间
     """
     connection = get_db_connection()
@@ -790,7 +790,7 @@ async def get_oxygen_hydrogen_outlet_temp(machine_name: str, machine_model: str,
     try:
         sql = '''
               SELECT date, time, oxygen_outlet_temp, hydrogen_outlet_temp
-              FROM test
+              FROM wincc
               WHERE machine_name = %s
                 AND machine_model = %s
                 AND oxygen_outlet_temp IS NOT NULL
@@ -858,7 +858,7 @@ async def get_oxygen_hydrogen_outlet_temp(machine_name: str, machine_model: str,
 @router.get("/one_device/oxygen_hydrogen_cross")
 async def get_oxygen_hydrogen_cross(machine_name: str, machine_model: str, start_time: str):
     """
-    根据 machine_name 和 machine_model 从 test 表获取 oxygen_in_hydrogen 和 hydrogen_in_oxygen 数据
+    根据 machine_name 和 machine_model 从 wincc 表获取 oxygen_in_hydrogen 和 hydrogen_in_oxygen 数据
     使用传入的 start_time 作为统一的起始时间
     """
     connection = get_db_connection()
@@ -867,7 +867,7 @@ async def get_oxygen_hydrogen_cross(machine_name: str, machine_model: str, start
     try:
         sql = '''
               SELECT date, time, oxygen_in_hydrogen, hydrogen_in_oxygen
-              FROM test
+              FROM wincc
               WHERE machine_name = %s
                 AND machine_model = %s
                 AND oxygen_in_hydrogen IS NOT NULL
@@ -935,8 +935,8 @@ async def get_oxygen_hydrogen_cross(machine_name: str, machine_model: str, start
 @router.get("/one_device/pressure_difference")
 async def get_pressure_difference(machine_name: str, machine_model: str, start_time: str):
     """
-    根据 machine_name 和 machine_model 从 test 表获取电解槽进出口压差
-    计算公式: inlet_pressure - oxygen_outlet_pressure
+    根据 machine_name 和 machine_model 从 wincc 表获取电解槽进出口压差
+    直接获取 pressure_diff 字段的值
     使用传入的 start_time 作为统一的起始时间
     """
     connection = get_db_connection()
@@ -944,12 +944,11 @@ async def get_pressure_difference(machine_name: str, machine_model: str, start_t
 
     try:
         sql = '''
-              SELECT date, time, inlet_pressure, oxygen_outlet_pressure
-              FROM test
+              SELECT date, time, pressure_diff
+              FROM wincc
               WHERE machine_name = %s
                 AND machine_model = %s
-                AND inlet_pressure IS NOT NULL
-                AND oxygen_outlet_pressure IS NOT NULL
+                AND pressure_diff IS NOT NULL
               ORDER BY date, time
               '''
         cursor.execute(sql, (machine_name, machine_model))
@@ -971,11 +970,7 @@ async def get_pressure_difference(machine_name: str, machine_model: str, start_t
             df['datetime'] = pd.to_datetime(df['date'].astype(str) + ' ' + df['time'].astype(str))
 
         # 转换为数值类型
-        df['inlet_pressure'] = pd.to_numeric(df['inlet_pressure'], errors='coerce')
-        df['oxygen_outlet_pressure'] = pd.to_numeric(df['oxygen_outlet_pressure'], errors='coerce')
-
-        # 计算压差: inlet_pressure - oxygen_outlet_pressure
-        df['pressure_difference'] = df['inlet_pressure'] - df['oxygen_outlet_pressure']
+        df['pressure_difference'] = pd.to_numeric(df['pressure_diff'], errors='coerce')
 
         # 使用传入的 start_time 作为起始时间
         global_start_time = pd.to_datetime(start_time)

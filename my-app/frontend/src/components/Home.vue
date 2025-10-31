@@ -349,8 +349,8 @@ const allDevicesStatus = computed(() => {
       // 如果最近一次数据在半小时内
       if (timeDiff <= halfHourMs) {
         voltage = Math.round(lastData.avg_voltage)
-        // 只要电压不是0就算运行中
-        isRunning = voltage !== 0
+        // 只要电压大于0就算运行中
+        isRunning = voltage > 0
       } else {
         // 超过半小时，电压显示为0，状态为未运行
         voltage = 0
@@ -532,7 +532,7 @@ const showLogsDialog = () => {
     if (logsDialogVisible.value) {
       fetchMqttLogs()
     }
-  }, 2000)
+  }, 10000)
 }
 
 // 关闭日志对话框时停止自动刷新

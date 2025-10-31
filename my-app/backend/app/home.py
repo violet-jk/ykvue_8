@@ -75,7 +75,7 @@ async def get_overview(day: int = Query(1, description="查询天数: 1 或 7"))
             # 将date和time组合成完整的时间戳进行查询
             sql = """
                 SELECT date, time, avg_voltage
-                FROM test
+                FROM wincc
                 WHERE machine_name = %s 
                   AND CONCAT(date, ' ', time) >= %s
                   AND CONCAT(date, ' ', time) <= %s
@@ -98,6 +98,7 @@ async def get_overview(day: int = Query(1, description="查询天数: 1 或 7"))
                         "avg_voltage": float(row['avg_voltage'])
                     }
                     for row in rows
+                    if row['avg_voltage'] is not None  # 过滤掉 avg_voltage 为 None 的记录
                 ]
             }
             devices_data.append(device_info)
@@ -160,7 +161,7 @@ async def export_data(
                    oxygen_outlet_temp, hydrogen_outlet_temp, hydrogen_gas_temp,
                    hydrogen_flow_meter, water_collection, cumulative_drainage,
                    oxygen_in_hydrogen, hydrogen_in_oxygen
-            FROM test
+            FROM wincc
             WHERE CONCAT(date, ' ', time) >= %s
               AND CONCAT(date, ' ', time) <= %s
             ORDER BY machine_name ASC, date ASC, time ASC

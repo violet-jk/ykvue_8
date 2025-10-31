@@ -6,3 +6,11 @@ DB_CONFIG = {
     "database": "yk8",
     "charset": "utf8mb4",
 }
+
+# MQTT配置
+MQTT_CONFIG = {
+    "broker": "124.222.161.163",
+    "port": 1883,
+    "keepalive": 120,
+    "topic": "WinCC/#",  # 订阅WinCC下的所有主题
+}

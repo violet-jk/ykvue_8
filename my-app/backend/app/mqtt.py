@@ -3,31 +3,30 @@ import threading
 import uuid
 from datetime import datetime, timedelta
 from collections import deque
-from queue import Queue
 from fastapi import APIRouter
 from typing import Optional
 import json
 import pymysql
 from dateutil import parser
-from config import DB_CONFIG
+from .config import DB_CONFIG, MQTT_CONFIG
 
 router = APIRouter()
 
 # MQTT配置
-MQTT_BROKER = "124.222.161.163"
-MQTT_PORT = 1883
-MQTT_KEEPALIVE = 120
-MQTT_TOPIC = "WinCC/#"  # 订阅WinCC下的所有主题
+MQTT_BROKER = MQTT_CONFIG["broker"]
+MQTT_PORT = MQTT_CONFIG["port"]
+MQTT_KEEPALIVE = MQTT_CONFIG["keepalive"]
+MQTT_TOPIC = MQTT_CONFIG["topic"]
 
 # 全局变量
 mqtt_client: Optional[mqtt.Client] = None
 mqtt_connected = False
 mqtt_lock = threading.Lock()
-mqtt_logs = deque(maxlen=1000)  # 最多保存2000条日志
+mqtt_logs = deque(maxlen=2000)  # 最多保存2000条日志
 
-# 消息处理队列和工作线程
-message_queue = Queue(maxsize=1000)  # 消息队列,最多缓冲1000条消息
-processing_threads = []  # 工作线程列表
+# 消息处理队列
+message_queue = []  # 消息列表,存储所有接收到的消息
+message_queue_lock = threading.Lock()  # 消息队列锁
 
 # 数据合并触发机制 (消息间隔检测)
 last_message_time = None  # 最后一条消息的接收时间
@@ -92,22 +91,28 @@ def on_disconnect(client, userdata, rc):
 
 
 def on_message(client, userdata, msg):
-    """MQTT消息接收回调 - 快速接收并放入队列"""
+    """MQTT消息接收回调 - 快速接收并放入列表"""
+    global last_message_time, merge_timer
     try:
         topic = msg.topic
         payload = msg.payload.decode('utf-8')
 
-        # 非阻塞放入队列
-        if not message_queue.full():
-            message_queue.put_nowait((topic, payload))
-        else:
-            # 队列满时记录警告
-            with mqtt_lock:
-                mqtt_logs.append({
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "level": "警告",
-                    "message": f"[MQTT] 消息队列已满({message_queue.qsize()}/{message_queue.maxsize}),消息被丢弃"
-                })
+        # 放入消息列表
+        with message_queue_lock:
+            message_queue.append((topic, payload))
+
+        # 更新最后消息时间
+        with merge_lock:
+            last_message_time = datetime.now()
+
+            # 取消之前的定时器
+            if merge_timer is not None:
+                merge_timer.cancel()
+
+            # 启动新的间隔检测定时器
+            merge_timer = threading.Timer(MESSAGE_IDLE_THRESHOLD, trigger_merge_on_idle)
+            merge_timer.daemon = True
+            merge_timer.start()
 
     except Exception as e:
         error_msg = f"[MQTT] 接收消息时出错: {str(e)}"
@@ -119,47 +124,9 @@ def on_message(client, userdata, msg):
             })
 
 
-def message_worker():
-    """消息处理工作线程 - 从队列中取出消息并处理"""
-    global last_message_time, merge_timer
-
-    while True:
-        try:
-            # 阻塞获取消息
-            topic, payload = message_queue.get()
-
-            # 执行耗时的数据清洗和存储
-            clean_and_store_data(topic, payload)
-
-            # 更新最后消息时间
-            with merge_lock:
-                last_message_time = datetime.now()
-
-                # 取消之前的定时器
-                if merge_timer is not None:
-                    merge_timer.cancel()
-
-                # 启动新的间隔检测定时器
-                merge_timer = threading.Timer(MESSAGE_IDLE_THRESHOLD, trigger_merge_on_idle)
-                merge_timer.daemon = True
-                merge_timer.start()
-
-            # 标记任务完成
-            message_queue.task_done()
-
-        except Exception as e:
-            error_msg = f"[MQTT] 处理消息时出错: {str(e)}"
-            with mqtt_lock:
-                mqtt_logs.append({
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "level": "错误",
-                    "message": error_msg
-                })
-
-
 def trigger_merge_on_idle():
     """
-    消息间隔检测触发合并
+    消息间隔检测触发数据清洗和上传
     当超过MESSAGE_IDLE_THRESHOLD秒没有新消息时触发
     """
     try:
@@ -168,7 +135,7 @@ def trigger_merge_on_idle():
             if last_message_time is not None:
                 elapsed = (datetime.now() - last_message_time).total_seconds()
                 if elapsed >= MESSAGE_IDLE_THRESHOLD:
-                    msg = f"[合并] 检测到消息间隔超过{MESSAGE_IDLE_THRESHOLD}秒,触发数据合并"
+                    msg = f"[数据处理] 检测到消息间隔超过{MESSAGE_IDLE_THRESHOLD}秒,触发数据清洗和上传"
                     with mqtt_lock:
                         mqtt_logs.append({
                             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -176,11 +143,11 @@ def trigger_merge_on_idle():
                             "message": msg
                         })
 
-                    # 执行数据合并操作
-                    merge_data()
+                    # 执行数据清洗和上传操作
+                    clean_and_upload_data()
 
     except Exception as e:
-        error_msg = f"[合并] 间隔检测触发合并时出错: {str(e)}"
+        error_msg = f"[数据处理] 间隔检测触发时出错: {str(e)}"
         with mqtt_lock:
             mqtt_logs.append({
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -189,14 +156,32 @@ def trigger_merge_on_idle():
             })
 
 
-def merge_data():
+def clean_and_upload_data():
     """
-    数据合并函数
-    将wincc_temp表中的数据合并到主表
-    TODO: 后续实现具体的合并逻辑
+    数据清洗和上传函数
+    从message_queue获取所有数据,清洗后直接上传到wincc表
     """
+    global message_queue
+    conn = None
+    cursor = None
+
     try:
-        msg = "[合并] 开始执行数据合并操作..."
+        # 1. 获取所有消息并清空队列
+        with message_queue_lock:
+            messages = message_queue.copy()
+            message_queue = []  # 清空队列
+
+        if not messages:
+            msg = "[数据处理] 没有需要处理的数据"
+            with mqtt_lock:
+                mqtt_logs.append({
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "level": "信息",
+                    "message": msg
+                })
+            return
+
+        msg = f"[数据处理] 开始处理{len(messages)}条消息..."
         with mqtt_lock:
             mqtt_logs.append({
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -204,13 +189,132 @@ def merge_data():
                 "message": msg
             })
 
-        # TODO: 这里后续实现具体的合并逻辑
-        # 例如:
-        # 1. 从wincc_temp读取is_uploaded=0的数据
-        # 2. 按照业务规则合并到主表
-        # 3. 更新wincc_temp中的is_uploaded标记为1
+        # 2. 解析和清洗数据
+        temp_data = []
+        for topic, payload in messages:
+            try:
+                # 解析JSON格式的payload
+                data = json.loads(payload)
 
-        success_msg = "[合并] 数据合并操作完成(待实现)"
+                # 提取字段
+                name = data.get('name')
+                value = data.get('value')
+                time_str = data.get('time')
+
+                # 验证必需字段
+                if name is None or value is None or time_str is None:
+                    continue
+
+                # 转换时间格式 (ISO 8601 -> YYYY-MM-DD HH:mm:ss, UTC+0 -> UTC+8)
+                dt = parser.isoparse(time_str)
+                dt_utc8 = dt + timedelta(hours=8)
+                formatted_time = dt_utc8.strftime("%Y-%m-%d %H:%M:%S")
+
+                temp_data.append({
+                    'name': name,
+                    'value': str(value),
+                    'time': formatted_time
+                })
+
+            except (json.JSONDecodeError, Exception) as e:
+                error_msg = f"[数据处理] 数据解析失败: {payload[:50]}..., 错误: {str(e)}"
+                with mqtt_lock:
+                    mqtt_logs.append({
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "level": "错误",
+                        "message": error_msg
+                    })
+                continue
+
+        if not temp_data:
+            msg = "[数据处理] 没有有效的数据可处理"
+            with mqtt_lock:
+                mqtt_logs.append({
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "level": "信息",
+                    "message": msg
+                })
+            return
+
+        # 3. 按设备分组数据 (通过name字段识别设备编号)
+        devices_data = {}  # {machine_name: {field_name: value, time: datetime}}
+
+        for row in temp_data:
+            name = row['name']
+            value = row['value']
+            time_val = row['time']
+
+            # 确保time_val是datetime对象
+            if isinstance(time_val, str):
+                time_val = datetime.strptime(time_val, "%Y-%m-%d %H:%M:%S")
+
+            # 解析设备编号 (从name中提取)
+            machine_name = extract_machine_name(name)
+
+            if machine_name not in devices_data:
+                devices_data[machine_name] = {'time': time_val}
+
+            # 映射字段名
+            field_name = map_mqtt_to_db_field(name, machine_name)
+            if field_name:
+                devices_data[machine_name][field_name] = value
+                # 保留最新的时间
+                if time_val > devices_data[machine_name]['time']:
+                    devices_data[machine_name]['time'] = time_val
+
+        # 4. 连接数据库并为每个设备插入数据到wincc表
+        conn = pymysql.connect(**DB_CONFIG)
+        cursor = conn.cursor()
+
+        inserted_count = 0
+        for machine_name, data in devices_data.items():
+            try:
+                # 提取时间字段
+                dt = data.pop('time')
+                date_val = dt.date()
+                time_val = dt.time()
+
+                # 构建插入SQL (设备编号加上井号)
+                fields = ['machine_name', 'date', 'time']
+                values = [f"{machine_name}#", date_val, time_val]
+                placeholders = ['%s', '%s', '%s']
+
+                # 添加其他字段
+                for field_name, value in data.items():
+                    fields.append(field_name)
+                    values.append(value)
+                    placeholders.append('%s')
+
+                insert_sql = f"""
+                    INSERT INTO wincc ({', '.join(fields)})
+                    VALUES ({', '.join(placeholders)})
+                """
+
+                cursor.execute(insert_sql, values)
+                inserted_count += 1
+
+                # 记录详细的插入日志
+                detail_msg = f"[数据处理] 设备{machine_name}数据已插入,包含{len(data)}个字段"
+                with mqtt_lock:
+                    mqtt_logs.append({
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "level": "成功",
+                        "message": detail_msg
+                    })
+
+            except Exception as e:
+                error_msg = f"[数据处理] 设备{machine_name}数据插入失败: {str(e)}"
+                with mqtt_lock:
+                    mqtt_logs.append({
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "level": "错误",
+                        "message": error_msg
+                    })
+
+        # 提交事务
+        conn.commit()
+
+        success_msg = f"[数据处理] 数据处理完成,共处理{len(temp_data)}条记录,插入{inserted_count}个设备的数据"
         with mqtt_lock:
             mqtt_logs.append({
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -218,114 +322,134 @@ def merge_data():
                 "message": success_msg
             })
 
-    except Exception as e:
-        error_msg = f"[合并] 数据合并失败: {str(e)}"
+    except pymysql.Error as db_error:
+        if conn:
+            conn.rollback()
+        error_msg = f"[数据处理] 数据库错误: {str(db_error)}"
         with mqtt_lock:
             mqtt_logs.append({
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "level": "错误",
                 "message": error_msg
             })
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        error_msg = f"[数据处理] 数据处理失败: {str(e)}"
+        with mqtt_lock:
+            mqtt_logs.append({
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "level": "错误",
+                "message": error_msg
+            })
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
-def clean_and_store_data(topic: str, payload: str):
+def extract_machine_name(mqtt_name: str) -> str:
     """
-    数据清洗和存储函数
+    从MQTT字段名中提取设备编号
+    例如: SYS_T/CM_H -> 1, SYS_T/CM_H_1 -> 2, SYS_T/CM_H_2 -> 3, ... SYS_T/CM_H_14 -> 15
+         CELL1 -> 1, CELL1_1 -> 2, CELL1_2 -> 3, ... CELL1_14 -> 15
+    """
+    # 查找最后一个下划线后的数字
+    parts = mqtt_name.split('_')
+
+    # 从后往前查找,找到第一个纯数字部分
+    for i in range(len(parts) - 1, -1, -1):
+        if parts[i].isdigit():
+            device_suffix = int(parts[i])
+            # 后缀从1开始对应设备2, 后缀14对应设备15
+            return str(device_suffix + 1)
+
+    # 没有数字后缀的是设备1
+    return '1'
+
+
+def map_mqtt_to_db_field(mqtt_name: str, machine_name: str) -> str:
+    """
+    将MQTT字段名映射到数据库字段名
 
     参数:
-    - topic: MQTT主题
-    - payload: 消息内容 (JSON格式: {"time":"2025-10-30T04:37:59.933Z","name":"ELE_I_1","value":0,"qualityCode":128})
+    - mqtt_name: MQTT字段名 (如: SYS_T/CM_H, SYS_T/CM_H_1, CELL1, CELL1_2)
+    - machine_name: 设备编号 (如: '1', '2', ...)
+
+    返回:
+    - 数据库字段名
     """
-    try:
-        # 1. 解析JSON格式的payload
-        data = json.loads(payload)
+    # 去掉设备编号后缀,获取基础字段名
+    base_name = mqtt_name
+    if machine_name != '1':
+        # 移除 _数字 后缀
+        suffix = f"_{int(machine_name) - 1}"
+        if base_name.endswith(suffix):
+            base_name = base_name[:-len(suffix)]
 
-        # 提取字段
-        name = data.get('name')
-        value = data.get('value')
-        time_str = data.get('time')
+    # 字段映射表 (基于mqtt说明.md)
+    field_mapping = {
+        'SYS_T/CM_H': 'hours',
+        'ELE_I': 'total_current',
+        'ELE_V': 'total_voltage',
+        'CELL1': 'cell_1',
+        'CELL2': 'cell_2',
+        'CELL3': 'cell_3',
+        'CELL4': 'cell_4',
+        'CELL5': 'cell_5',
+        'CELL6': 'cell_6',
+        'CELL7': 'cell_7',
+        'CELL8': 'cell_8',
+        'CELL9': 'cell_9',
+        'CELL10': 'cell_10',
+        'CELL11': 'cell_11',
+        'CELL12': 'cell_12',
+        'CELL13': 'cell_13',
+        'CELL14': 'cell_14',
+        'CELL15': 'cell_15',
+        'CELL16': 'cell_16',
+        'CELL17': 'cell_17',
+        'CELL18': 'cell_18',
+        'CELL19': 'cell_19',
+        'CELL20': 'cell_20',
+        'CELL21': 'cell_21',
+        'CELL22': 'cell_22',
+        'CELL23': 'cell_23',
+        'CELL24': 'cell_24',
+        'CELL25': 'cell_25',
+        'cell_max': 'max_voltage',
+        'cell_min': 'min_voltage',
+        'cell_ave': 'avg_voltage',
+        'cell_range': 'voltage_range',
+        'PUMP_P': 'pump_pressure',
+        'LCP_OUT': 'pump_opening',
+        'FAN_OUT': 'fan_opening',
+        'DT118': 'specific_gravity',
+        'PT102': 'inlet_pressure',
+        'LIT109': 'liquid_level',
+        'PT104': 'oxygen_outlet_pressure',
+        'PT105': 'hydrogen_outlet_pressure',
+        'TT103': 'oxygen_outlet_temp',
+        'TT101': 'alkali_inlet_temp',
+        'TT106': 'hydrogen_outlet_temp',
+        'TT114': 'hydrogen_gas_temp',
+        'FIT109': 'hydrogen_flow_meter',
+        'AT132': 'oxygen_in_hydrogen',
+        'AT131': 'hydrogen_in_oxygen',
+        '当前能耗': 'current_power',
+        'ELE_PDT': 'pressure_diff',
+        'SEP_PDT': 'sep_pressure_diff',
+        '标准差': 'std_deviation',
+    }
 
-        # 验证必需字段
-        if name is None or value is None or time_str is None:
-            error_msg = f"[MQTT] 数据缺少必需字段: {payload}"
-            with mqtt_lock:
-                mqtt_logs.append({
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "level": "警告",
-                    "message": error_msg
-                })
-            return
+    return field_mapping.get(base_name, None)
 
-        # 2. 转换时间格式 (ISO 8601 -> YYYY-MM-DD HH:mm:ss, UTC+0 -> UTC+8)
-        # 解析ISO 8601格式时间
-        dt = parser.isoparse(time_str)
-
-        # 转换为UTC+8时区
-        dt_utc8 = dt + timedelta(hours=8)
-
-        # 格式化为 YYYY-MM-DD HH:mm:ss
-        formatted_time = dt_utc8.strftime("%Y-%m-%d %H:%M:%S")
-
-        # 3. 存入数据库
-        conn = None
-        cursor = None
-        try:
-            # 连接数据库
-            conn = pymysql.connect(**DB_CONFIG)
-            cursor = conn.cursor()
-
-            # 插入数据
-            sql = """
-                  INSERT INTO wincc_temp (name, value, time, is_uploaded)
-                  VALUES (%s, %s, %s, 0) \
-                  """
-            cursor.execute(sql, (name, str(value), formatted_time))
-            conn.commit()
-
-            # 记录成功日志
-            success_msg = f"[MQTT] 数据已存储: name={name}, value={value}, time={formatted_time}"
-            with mqtt_lock:
-                mqtt_logs.append({
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "level": "成功",
-                    "message": success_msg
-                })
-
-        except pymysql.Error as db_error:
-            error_msg = f"[MQTT] 数据库错误: {str(db_error)}"
-            with mqtt_lock:
-                mqtt_logs.append({
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "level": "错误",
-                    "message": error_msg
-                })
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                conn.close()
-
-    except json.JSONDecodeError as e:
-        error_msg = f"[MQTT] JSON解析失败: {payload}, 错误: {str(e)}"
-        with mqtt_lock:
-            mqtt_logs.append({
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "level": "错误",
-                "message": error_msg
-            })
-    except Exception as e:
-        error_msg = f"[MQTT] 数据清洗失败: {str(e)}, payload: {payload}"
-        with mqtt_lock:
-            mqtt_logs.append({
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "level": "错误",
-                "message": error_msg
-            })
 
 
 def start_mqtt_client():
     """启动MQTT客户端"""
-    global mqtt_client, mqtt_connected, processing_threads
+    global mqtt_client, mqtt_connected
 
     try:
         # 生成随机的客户端ID，避免重复连接冲突
@@ -346,25 +470,6 @@ def start_mqtt_client():
         mqtt_client.on_connect = on_connect
         mqtt_client.on_disconnect = on_disconnect
         mqtt_client.on_message = on_message
-
-        # 启动3个消息处理工作线程
-        num_workers = 3
-        for i in range(num_workers):
-            worker = threading.Thread(
-                target=message_worker,
-                daemon=True,
-                name=f"MQTT-Worker-{i + 1}"
-            )
-            worker.start()
-            processing_threads.append(worker)
-
-        worker_msg = f"[MQTT] 已启动 {num_workers} 个消息处理工作线程"
-        with mqtt_lock:
-            mqtt_logs.append({
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "level": "成功",
-                "message": worker_msg
-            })
 
         # 连接到MQTT Broker
         connecting_msg = f"[MQTT] 正在连接到 {MQTT_BROKER}:{MQTT_PORT}..."
