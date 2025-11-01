@@ -10,7 +10,7 @@ router = APIRouter()
 
 
 def get_db_connection():
-    """获取数据库连接，最多重试10次，每次间隔1秒"""
+    """获取数据库连接,最多重试10次,每次间隔1秒"""
     last_error: Exception
     for attempt in range(10):
         try:
@@ -20,7 +20,7 @@ def get_db_connection():
             last_error = e
             if attempt < 9:
                 time.sleep(1)
-    # 所有重试均失败，抛出HTTP异常
+    # 所有重试均失败,抛出HTTP异常
     raise HTTPException(status_code=500, detail=f"数据库连接失败: {str(last_error)}")
 
 
@@ -54,21 +54,25 @@ async def get_device_list():
         connection.close()
 
 
-@router.get("/one_device/cell")
-async def get_one_device(machine_name: str, machine_model: str):
+@router.get("/one_device/all_data")
+async def get_all_device_data(machine_name: str, machine_model: str):
     """
-    根据 machine_name 和 machine_model 从 wincc 表获取数据
+    优化版本: 一次性获取设备的所有数据
+    1. 只进行一次数据库查询
+    2. 基于cell数据过滤后的时间点来确保所有数据的时间一致性
+    3. 返回所有图表所需的数据
     """
     connection = get_db_connection()
     cursor = connection.cursor(pymysql.cursors.DictCursor)
 
     try:
+        # 一次性查询所有需要的字段
         sql = '''
-              SELECT date, time, cell_1, cell_2, cell_3, cell_4, cell_5, cell_6, cell_7, cell_8, cell_9, cell_10, cell_11, cell_12, cell_13, cell_14, cell_15, cell_16, cell_17, cell_18, cell_19, cell_20
+              SELECT date, time, cell_1, cell_2, cell_3, cell_4, cell_5, cell_6, cell_7, cell_8, cell_9, cell_10, cell_11, cell_12, cell_13, cell_14, cell_15, cell_16, cell_17, cell_18, cell_19, cell_20, avg_voltage, voltage_range, pump_pressure, specific_gravity, hydrogen_flow_meter, inlet_pressure, oxygen_outlet_pressure, hydrogen_outlet_pressure, oxygen_outlet_temp, hydrogen_outlet_temp, oxygen_in_hydrogen, hydrogen_in_oxygen, pressure_diff
               FROM wincc
               WHERE machine_name = %s
                 AND machine_model = %s
-              ORDER BY date, time \
+              ORDER BY date, time
               '''
         cursor.execute(sql, (machine_name, machine_model))
         results = cursor.fetchall()
@@ -79,21 +83,21 @@ async def get_one_device(machine_name: str, machine_model: str):
         if df.empty:
             return {
                 "status": "success",
-                "voltage": {},
+                "data": {},
+                "global_start_time": None
             }
 
         # 组合 date 和 time 成 datetime
-        # 处理 time 可能是 timedelta 类型的情况
         df['date'] = pd.to_datetime(df['date'])
 
-        # 如果 time 是 timedelta，直接加到 date 上
+        # 如果 time 是 timedelta,直接加到 date 上
         if pd.api.types.is_timedelta64_dtype(df['time']) or isinstance(df['time'].iloc[0], pd.Timedelta):
             df['datetime'] = df['date'] + df['time']
         else:
-            # 如果 time 是字符串或时间类型，转换为 timedelta
+            # 如果 time 是字符串或时间类型,转换为 timedelta
             df['datetime'] = pd.to_datetime(df['date'].astype(str) + ' ' + df['time'].astype(str))
 
-        # 步骤1: 计算每个cell的zero_ratio，排除>0.8的cell
+        # ===== 步骤1: 处理cell数据,计算每个cell的zero_ratio,排除>0.8的cell =====
         valid_cells = []
         for i in range(1, 21):  # cell_1 到 cell_20
             cell_field = f'cell_{i}'
@@ -136,15 +140,15 @@ async def get_one_device(machine_name: str, machine_model: str):
             if zero_ratio <= 0.8:
                 valid_cells.append(cell_field)
 
-        # 如果没有有效的cell，返回空数据
+        # 如果没有有效的cell,返回空数据
         if len(valid_cells) == 0:
             return {
                 "status": "success",
                 "data": {},
+                "global_start_time": None
             }
 
-        # 步骤2: 获取剩余cell的起始时间点，为所有cell均>1400的最小时间点
-        # 对每个有效cell，找到它第一次>1400的时间点
+        # ===== 步骤2: 获取剩余cell的起始时间点,为所有cell均>1400的最小时间点 =====
         start_time_candidates = []
         for cell_field in valid_cells:
             cell_df = df[['datetime', cell_field]].copy()
@@ -159,40 +163,55 @@ async def get_one_device(machine_name: str, machine_model: str):
                 start_time = cell_df.loc[valid_indices[0], 'datetime']
                 start_time_candidates.append(start_time)
 
-        # 使用最晚的起始时间，确保所有cell在这个时间点都>1400
+        # 使用最晚的起始时间,确保所有cell在这个时间点都>1400
         global_start_time = max(start_time_candidates)
 
-        # 步骤3: 根据起始时间点计算作图需要的数据
+        # ===== 步骤3: 基于global_start_time过滤数据,并获取实际的时间点列表 =====
+        # 先处理cell数据,获取过滤后的实际时间点
+        cell_df_filtered = df[['datetime'] + valid_cells].copy()
+
+        # 转换所有cell列为数值类型
+        for cell_field in valid_cells:
+            cell_df_filtered[cell_field] = pd.to_numeric(cell_df_filtered[cell_field], errors='coerce')
+
+        # 使用全局起始时间筛选数据
+        cell_df_filtered = cell_df_filtered[cell_df_filtered['datetime'] >= global_start_time].copy()
+
+        # 过滤掉任意cell < 1400 的行,确保所有cell都>=1400
+        mask = pd.Series([True] * len(cell_df_filtered), index=cell_df_filtered.index)
+        for cell_field in valid_cells:
+            mask &= (cell_df_filtered[cell_field] >= 1400)
+
+        cell_df_filtered = cell_df_filtered[mask].copy()
+
+        if cell_df_filtered.empty:
+            return {
+                "status": "success",
+                "data": {},
+                "global_start_time": global_start_time.strftime('%Y-%m-%d %H:%M:%S')
+            }
+
+        # 获取过滤后的有效时间点列表(这是基准时间点,用于过滤其他数据)
+        valid_datetimes = cell_df_filtered['datetime'].unique()
+        valid_datetimes = pd.Series(valid_datetimes).sort_values().reset_index(drop=True)
+
+        # 计算时间差(小时),向下取整,用于分组
+        cell_df_filtered['time_diff'] = ((cell_df_filtered['datetime'] - global_start_time).dt.total_seconds() / 3600).astype(int)
+
+        # ===== 步骤4: 处理cell电压数据 =====
         voltage_data = {}
         for cell_field in valid_cells:
-            # 创建副本避免警告
-            cell_df = df[['datetime', cell_field]].copy()
-            cell_df.columns = ['datetime', 'value']
-
-            # 转换为数值类型
-            cell_df['value'] = pd.to_numeric(cell_df['value'], errors='coerce')
-
-            # 使用全局起始时间筛选数据
-            cell_df = cell_df[cell_df['datetime'] >= global_start_time].copy()
-
-            # 过滤掉 value < 1400 的数据
-            cell_df = cell_df[cell_df['value'] >= 1400].copy()
-
-            if cell_df.empty:
-                continue
-
-            # 计算时间差（小时），向下取整
-            cell_df['time_diff'] = ((cell_df['datetime'] - global_start_time).dt.total_seconds() / 3600).astype(int)
-
-            # 按小时分组计算平均值，同时获取每个小时的起始时间
-            grouped = cell_df.groupby('time_diff').agg({
-                'value': 'mean',
-                'datetime': 'first'  # 获取每个小时的第一个时间点
+            # 按time_diff分组计算平均值,同时获取每组的第一个时间点
+            grouped = cell_df_filtered.groupby('time_diff').agg({
+                cell_field: 'mean',
+                'datetime': 'first'
             }).reset_index()
 
-            # 重命名列为图表格式：x, y, t
+            # 重命名列为图表格式: x, y, t
             grouped.columns = ['x', 'y', 't']
+            # 先round,再替换NaN为None,避免JSON序列化错误
             grouped['y'] = grouped['y'].round(2)
+            grouped['y'] = grouped['y'].replace({np.nan: None})
             # 将时间转换为字符串格式
             grouped['t'] = grouped['t'].dt.strftime('%Y-%m-%d %H:%M:%S')
 
@@ -202,806 +221,79 @@ async def get_one_device(machine_name: str, machine_model: str):
                 't': grouped['t'].tolist()
             }
 
+        # ===== 步骤5: 使用相同的时间点过滤其他指标数据 =====
+        # 创建一个辅助函数来处理单个字段
+        def process_field(field_name, filter_condition=None):
+            """处理单个字段,使用valid_datetimes中的时间点"""
+            if field_name not in df.columns:
+                return {"x": [], "y": [], "t": []}
+
+            field_df = df[['datetime', field_name]].copy()
+            field_df[field_name] = pd.to_numeric(field_df[field_name], errors='coerce')
+
+            # 应用额外的过滤条件(如avg_voltage >= 1400)
+            if filter_condition is not None:
+                field_df = field_df[filter_condition(field_df[field_name])].copy()
+
+            # 只保留valid_datetimes中存在的时间点(这是关键:使用cell过滤后的原始时间点)
+            field_df = field_df[field_df['datetime'].isin(valid_datetimes)].copy()
+
+            if field_df.empty:
+                return {"x": [], "y": [], "t": []}
+
+            # 计算时间差(小时),向下取整,用于分组
+            field_df['time_diff'] = ((field_df['datetime'] - global_start_time).dt.total_seconds() / 3600).astype(int)
+
+            # 按time_diff分组计算平均值,同时获取每组的第一个时间点
+            grouped = field_df.groupby('time_diff').agg({
+                field_name: 'mean',
+                'datetime': 'first'
+            }).reset_index()
+
+            # 重命名列
+            grouped.columns = ['x', 'y', 't']
+            # 先round,再替换NaN为None,避免JSON序列化错误
+            grouped['y'] = grouped['y'].round(2)
+            grouped['y'] = grouped['y'].replace({np.nan: None})
+            grouped['t'] = grouped['t'].dt.strftime('%Y-%m-%d %H:%M:%S')
+
+            return {
+                'x': grouped['x'].tolist(),
+                'y': grouped['y'].tolist(),
+                't': grouped['t'].tolist()
+            }
+
+        # 处理各个指标
+        result_data = {
+            "voltage": voltage_data,
+            "avg_voltage": process_field('avg_voltage'),
+            "voltage_range": process_field('voltage_range'),
+            "pump_pressure": process_field('pump_pressure'),
+            "specific_gravity": process_field('specific_gravity'),
+            "hydrogen_flow_meter": process_field('hydrogen_flow_meter'),
+            "inlet_outlet_pressure": {
+                "inlet_pressure": process_field('inlet_pressure'),
+                "oxygen_outlet_pressure": process_field('oxygen_outlet_pressure')
+            },
+            "oxygen_hydrogen_outlet_pressure": {
+                "oxygen_outlet_pressure": process_field('oxygen_outlet_pressure'),
+                "hydrogen_outlet_pressure": process_field('hydrogen_outlet_pressure')
+            },
+            "oxygen_hydrogen_outlet_temp": {
+                "oxygen_outlet_temp": process_field('oxygen_outlet_temp'),
+                "hydrogen_outlet_temp": process_field('hydrogen_outlet_temp')
+            },
+            "oxygen_hydrogen_cross": {
+                "oxygen_in_hydrogen": process_field('oxygen_in_hydrogen'),
+                "hydrogen_in_oxygen": process_field('hydrogen_in_oxygen')
+            },
+            "pressure_difference": process_field('pressure_diff')
+        }
+
         return {
             "status": "success",
-            "data": voltage_data,
+            "data": result_data,
             "global_start_time": global_start_time.strftime('%Y-%m-%d %H:%M:%S')
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
-    finally:
-        cursor.close()
-        connection.close()
-
-
-@router.get("/one_device/voltage_avg")
-async def get_voltage_avg(machine_name: str, machine_model: str, start_time: str):
-    """
-    根据 machine_name 和 machine_model 从 wincc 表获取 avg_voltage 数据
-    使用传入的 start_time 作为统一的起始时间
-    """
-    connection = get_db_connection()
-    cursor = connection.cursor(pymysql.cursors.DictCursor)
-
-    try:
-        sql = '''
-              SELECT date, time, avg_voltage
-              FROM wincc
-              WHERE machine_name = %s
-                AND machine_model = %s
-                AND avg_voltage IS NOT NULL
-              ORDER BY date, time
-              '''
-        cursor.execute(sql, (machine_name, machine_model))
-        results = cursor.fetchall()
-
-        # 使用 pandas 处理数据
-        df = pd.DataFrame(results)
-
-        if df.empty:
-            return {
-                "status": "success",
-                "data": {"x": [], "y": []},
-            }
-
-        # 组合 date 和 time 成 datetime
-        df['date'] = pd.to_datetime(df['date'])
-
-        # 如果 time 是 timedelta，直接加到 date 上
-        if pd.api.types.is_timedelta64_dtype(df['time']) or isinstance(df['time'].iloc[0], pd.Timedelta):
-            df['datetime'] = df['date'] + df['time']
-        else:
-            # 如果 time 是字符串或时间类型，转换为 timedelta
-            df['datetime'] = pd.to_datetime(df['date'].astype(str) + ' ' + df['time'].astype(str))
-
-        # 转换为数值类型
-        df['avg_voltage'] = pd.to_numeric(df['avg_voltage'], errors='coerce')
-
-        # 使用传入的 start_time 作为起始时间
-        global_start_time = pd.to_datetime(start_time)
-
-        # 从起始时间开始筛选数据
-        df = df[df['datetime'] >= global_start_time].copy()
-
-        # 过滤掉 value < 1400 的数据
-        df = df[df['avg_voltage'] >= 1400].copy()
-
-        if df.empty:
-            return {
-                "status": "success",
-                "data": {"x": [], "y": []},
-            }
-
-        # 计算时间差（小时），向下取整
-        df['time_diff'] = ((df['datetime'] - global_start_time).dt.total_seconds() / 3600).astype(int)
-
-        # 按小时分组计算平均值，同时获取每个小时的起始时间
-        grouped = df.groupby('time_diff').agg({
-            'avg_voltage': 'mean',
-            'datetime': 'first'  # 获取每个小时的第一个时间点
-        }).reset_index()
-
-        # 重命名列为图表格式：x, y, t
-        grouped.columns = ['x', 'y', 't']
-        grouped['y'] = grouped['y'].round(2)
-        # 将时间转换为字符串格式
-        grouped['t'] = grouped['t'].dt.strftime('%Y-%m-%d %H:%M:%S')
-
-        return {
-            "status": "success",
-            "data": {"x": grouped['x'].tolist(), "y": grouped['y'].tolist(), "t": grouped['t'].tolist()},
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
-    finally:
-        cursor.close()
-        connection.close()
-
-
-@router.get("/one_device/voltage_range")
-async def get_voltage_range(machine_name: str, machine_model: str, start_time: str):
-    """
-    根据 machine_name 和 machine_model 从 wincc 表获取 voltage_range 数据
-    使用传入的 start_time 作为统一的起始时间
-    """
-    connection = get_db_connection()
-    cursor = connection.cursor(pymysql.cursors.DictCursor)
-
-    try:
-        sql = '''
-              SELECT date, time, voltage_range
-              FROM wincc
-              WHERE machine_name = %s
-                AND machine_model = %s
-                AND voltage_range IS NOT NULL
-              ORDER BY date, time
-              '''
-        cursor.execute(sql, (machine_name, machine_model))
-        results = cursor.fetchall()
-
-        # 使用 pandas 处理数据
-        df = pd.DataFrame(results)
-
-        if df.empty:
-            return {
-                "status": "success",
-                "data": {"x": [], "y": []},
-            }
-
-        # 组合 date 和 time 成 datetime
-        df['date'] = pd.to_datetime(df['date'])
-
-        # 如果 time 是 timedelta，直接加到 date 上
-        if pd.api.types.is_timedelta64_dtype(df['time']) or isinstance(df['time'].iloc[0], pd.Timedelta):
-            df['datetime'] = df['date'] + df['time']
-        else:
-            # 如果 time 是字符串或时间类型，转换为 timedelta
-            df['datetime'] = pd.to_datetime(df['date'].astype(str) + ' ' + df['time'].astype(str))
-
-        # 转换为数值类型
-        df['voltage_range'] = pd.to_numeric(df['voltage_range'], errors='coerce')
-
-        # 使用传入的 start_time 作为起始时间
-        global_start_time = pd.to_datetime(start_time)
-
-        # 从起始时间开始筛选数据
-        df = df[df['datetime'] >= global_start_time].copy()
-
-        if df.empty:
-            return {
-                "status": "success",
-                "data": {"x": [], "y": []},
-            }
-
-        # 计算时间差（小时），向下取整
-        df['time_diff'] = ((df['datetime'] - global_start_time).dt.total_seconds() / 3600).astype(int)
-
-        # 按小时分组计算平均值，同时获取每个小时的起始时间
-        grouped = df.groupby('time_diff').agg({
-            'voltage_range': 'mean',
-            'datetime': 'first'  # 获取每个小时的第一个时间点
-        }).reset_index()
-
-        # 重命名列为图表格式：x, y, t
-        grouped.columns = ['x', 'y', 't']
-        grouped['y'] = grouped['y'].round(2)
-        # 将时间转换为字符串格式
-        grouped['t'] = grouped['t'].dt.strftime('%Y-%m-%d %H:%M:%S')
-
-        return {
-            "status": "success",
-            "data": {"x": grouped['x'].tolist(), "y": grouped['y'].tolist(), "t": grouped['t'].tolist()},
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
-    finally:
-        cursor.close()
-        connection.close()
-
-
-@router.get("/one_device/pump_pressure")
-async def get_pump_pressure(machine_name: str, machine_model: str, start_time: str):
-    """
-    根据 machine_name 和 machine_model 从 wincc 表获取 pump_pressure 数据
-    使用传入的 start_time 作为统一的起始时间
-    """
-    connection = get_db_connection()
-    cursor = connection.cursor(pymysql.cursors.DictCursor)
-
-    try:
-        sql = '''
-              SELECT date, time, pump_pressure
-              FROM wincc
-              WHERE machine_name = %s
-                AND machine_model = %s
-                AND pump_pressure IS NOT NULL
-              ORDER BY date, time
-              '''
-        cursor.execute(sql, (machine_name, machine_model))
-        results = cursor.fetchall()
-
-        # 使用 pandas 处理数据
-        df = pd.DataFrame(results)
-
-        if df.empty:
-            return {
-                "status": "success",
-                "data": {"x": [], "y": []},
-            }
-
-        # 组合 date 和 time 成 datetime
-        df['date'] = pd.to_datetime(df['date'])
-
-        # 如果 time 是 timedelta，直接加到 date 上
-        if pd.api.types.is_timedelta64_dtype(df['time']) or isinstance(df['time'].iloc[0], pd.Timedelta):
-            df['datetime'] = df['date'] + df['time']
-        else:
-            # 如果 time 是字符串或时间类型，转换为 timedelta
-            df['datetime'] = pd.to_datetime(df['date'].astype(str) + ' ' + df['time'].astype(str))
-
-        # 转换为数值类型
-        df['pump_pressure'] = pd.to_numeric(df['pump_pressure'], errors='coerce')
-
-        # 使用传入的 start_time 作为起始时间
-        global_start_time = pd.to_datetime(start_time)
-
-        # 从起始时间开始筛选数据
-        df = df[df['datetime'] >= global_start_time].copy()
-
-        if df.empty:
-            return {
-                "status": "success",
-                "data": {"x": [], "y": []},
-            }
-
-        # 计算时间差（小时），向下取整
-        df['time_diff'] = ((df['datetime'] - global_start_time).dt.total_seconds() / 3600).astype(int)
-
-        # 按小时分组计算平均值，同时获取每个小时的起始时间
-        grouped = df.groupby('time_diff').agg({
-            'pump_pressure': 'mean',
-            'datetime': 'first'  # 获取每个小时的第一个时间点
-        }).reset_index()
-
-        # 重命名列为图表格式：x, y, t
-        grouped.columns = ['x', 'y', 't']
-        grouped['y'] = grouped['y'].round(2)
-        # 将时间转换为字符串格式
-        grouped['t'] = grouped['t'].dt.strftime('%Y-%m-%d %H:%M:%S')
-
-        return {
-            "status": "success",
-            "data": {"x": grouped['x'].tolist(), "y": grouped['y'].tolist(), "t": grouped['t'].tolist()},
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
-    finally:
-        cursor.close()
-        connection.close()
-
-
-@router.get("/one_device/specific_gravity")
-async def get_specific_gravity(machine_name: str, machine_model: str, start_time: str):
-    """
-    根据 machine_name 和 machine_model 从 wincc 表获取 specific_gravity 数据
-    使用传入的 start_time 作为统一的起始时间
-    """
-    connection = get_db_connection()
-    cursor = connection.cursor(pymysql.cursors.DictCursor)
-
-    try:
-        sql = '''
-              SELECT date, time, specific_gravity
-              FROM wincc
-              WHERE machine_name = %s
-                AND machine_model = %s
-                AND specific_gravity IS NOT NULL
-              ORDER BY date, time
-              '''
-        cursor.execute(sql, (machine_name, machine_model))
-        results = cursor.fetchall()
-
-        # 使用 pandas 处理数据
-        df = pd.DataFrame(results)
-
-        if df.empty:
-            return {
-                "status": "success",
-                "data": {"x": [], "y": []},
-            }
-
-        # 组合 date 和 time 成 datetime
-        df['date'] = pd.to_datetime(df['date'])
-
-        # 如果 time 是 timedelta，直接加到 date 上
-        if pd.api.types.is_timedelta64_dtype(df['time']) or isinstance(df['time'].iloc[0], pd.Timedelta):
-            df['datetime'] = df['date'] + df['time']
-        else:
-            # 如果 time 是字符串或时间类型，转换为 timedelta
-            df['datetime'] = pd.to_datetime(df['date'].astype(str) + ' ' + df['time'].astype(str))
-
-        # 转换为数值类型
-        df['specific_gravity'] = pd.to_numeric(df['specific_gravity'], errors='coerce')
-
-        # 使用传入的 start_time 作为起始时间
-        global_start_time = pd.to_datetime(start_time)
-
-        # 从起始时间开始筛选数据
-        df = df[df['datetime'] >= global_start_time].copy()
-
-        if df.empty:
-            return {
-                "status": "success",
-                "data": {"x": [], "y": []},
-            }
-
-        # 计算时间差（小时），向下取整
-        df['time_diff'] = ((df['datetime'] - global_start_time).dt.total_seconds() / 3600).astype(int)
-
-        # 按小时分组计算平均值，同时获取每个小时的起始时间
-        grouped = df.groupby('time_diff').agg({
-            'specific_gravity': 'mean',
-            'datetime': 'first'  # 获取每个小时的第一个时间点
-        }).reset_index()
-
-        # 重命名列为图表格式：x, y, t
-        grouped.columns = ['x', 'y', 't']
-        grouped['y'] = grouped['y'].round(2)
-        # 将时间转换为字符串格式
-        grouped['t'] = grouped['t'].dt.strftime('%Y-%m-%d %H:%M:%S')
-
-        return {
-            "status": "success",
-            "data": {"x": grouped['x'].tolist(), "y": grouped['y'].tolist(), "t": grouped['t'].tolist()},
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
-    finally:
-        cursor.close()
-        connection.close()
-
-
-@router.get("/one_device/hydrogen_flow_meter")
-async def get_hydrogen_flow_meter(machine_name: str, machine_model: str, start_time: str):
-    """
-    根据 machine_name 和 machine_model 从 wincc 表获取 hydrogen_flow_meter 数据
-    使用传入的 start_time 作为统一的起始时间
-    """
-    connection = get_db_connection()
-    cursor = connection.cursor(pymysql.cursors.DictCursor)
-
-    try:
-        sql = '''
-              SELECT date, time, hydrogen_flow_meter
-              FROM wincc
-              WHERE machine_name = %s
-                AND machine_model = %s
-                AND hydrogen_flow_meter IS NOT NULL
-              ORDER BY date, time
-              '''
-        cursor.execute(sql, (machine_name, machine_model))
-        results = cursor.fetchall()
-
-        # 使用 pandas 处理数据
-        df = pd.DataFrame(results)
-
-        if df.empty:
-            return {
-                "status": "success",
-                "data": {"x": [], "y": []},
-            }
-
-        # 组合 date 和 time 成 datetime
-        df['date'] = pd.to_datetime(df['date'])
-
-        # 如果 time 是 timedelta，直接加到 date 上
-        if pd.api.types.is_timedelta64_dtype(df['time']) or isinstance(df['time'].iloc[0], pd.Timedelta):
-            df['datetime'] = df['date'] + df['time']
-        else:
-            # 如果 time 是字符串或时间类型，转换为 timedelta
-            df['datetime'] = pd.to_datetime(df['date'].astype(str) + ' ' + df['time'].astype(str))
-
-        # 转换为数值类型
-        df['hydrogen_flow_meter'] = pd.to_numeric(df['hydrogen_flow_meter'], errors='coerce')
-
-        # 使用传入的 start_time 作为起始时间
-        global_start_time = pd.to_datetime(start_time)
-
-        # 从起始时间开始筛选数据
-        df = df[df['datetime'] >= global_start_time].copy()
-
-        if df.empty:
-            return {
-                "status": "success",
-                "data": {"x": [], "y": []},
-            }
-
-        # 计算时间差（小时），向下取整
-        df['time_diff'] = ((df['datetime'] - global_start_time).dt.total_seconds() / 3600).astype(int)
-
-        # 按小时分组计算平均值，同时获取每个小时的起始时间
-        grouped = df.groupby('time_diff').agg({
-            'hydrogen_flow_meter': 'mean',
-            'datetime': 'first'  # 获取每个小时的第一个时间点
-        }).reset_index()
-
-        # 重命名列为图表格式：x, y, t
-        grouped.columns = ['x', 'y', 't']
-        grouped['y'] = grouped['y'].round(2)
-        # 将时间转换为字符串格式
-        grouped['t'] = grouped['t'].dt.strftime('%Y-%m-%d %H:%M:%S')
-
-        return {
-            "status": "success",
-            "data": {"x": grouped['x'].tolist(), "y": grouped['y'].tolist(), "t": grouped['t'].tolist()},
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
-    finally:
-        cursor.close()
-        connection.close()
-
-
-@router.get("/one_device/inlet_outlet_pressure")
-async def get_inlet_outlet_pressure(machine_name: str, machine_model: str, start_time: str):
-    """
-    根据 machine_name 和 machine_model 从 wincc 表获取 inlet_pressure 和 oxygen_outlet_pressure 数据
-    使用传入的 start_time 作为统一的起始时间
-    """
-    connection = get_db_connection()
-    cursor = connection.cursor(pymysql.cursors.DictCursor)
-
-    try:
-        sql = '''
-              SELECT date, time, inlet_pressure, oxygen_outlet_pressure
-              FROM wincc
-              WHERE machine_name = %s
-                AND machine_model = %s
-                AND inlet_pressure IS NOT NULL
-                AND oxygen_outlet_pressure IS NOT NULL
-              ORDER BY date, time
-              '''
-        cursor.execute(sql, (machine_name, machine_model))
-        results = cursor.fetchall()
-
-        # 使用 pandas 处理数据
-        df = pd.DataFrame(results)
-
-        if df.empty:
-            return {
-                "status": "success",
-                "data": {"inlet_pressure": {"x": [], "y": []}, "oxygen_outlet_pressure": {"x": [], "y": []}},
-            }
-
-        # 组合 date 和 time 成 datetime
-        df['date'] = pd.to_datetime(df['date'])
-
-        if pd.api.types.is_timedelta64_dtype(df['time']) or isinstance(df['time'].iloc[0], pd.Timedelta):
-            df['datetime'] = df['date'] + df['time']
-        else:
-            df['datetime'] = pd.to_datetime(df['date'].astype(str) + ' ' + df['time'].astype(str))
-
-        # 使用传入的 start_time 作为起始时间
-        global_start_time = pd.to_datetime(start_time)
-
-        result_data = {}
-
-        for field in ['inlet_pressure', 'oxygen_outlet_pressure']:
-            df[field] = pd.to_numeric(df[field], errors='coerce')
-
-            # 从起始时间开始筛选数据
-            field_df = df[df['datetime'] >= global_start_time].copy()
-
-            if field_df.empty:
-                result_data[field] = {"x": [], "y": [], "t": []}
-                continue
-
-            field_df['time_diff'] = ((field_df['datetime'] - global_start_time).dt.total_seconds() / 3600).astype(int)
-
-            grouped = field_df.groupby('time_diff').agg({
-                field: 'mean',
-                'datetime': 'first'  # 获取每个小时的第一个时间点
-            }).reset_index()
-
-            grouped.columns = ['x', 'y', 't']
-            grouped['y'] = grouped['y'].round(2)
-            # 将时间转换为字符串格式
-            grouped['t'] = grouped['t'].dt.strftime('%Y-%m-%d %H:%M:%S')
-
-            result_data[field] = {"x": grouped['x'].tolist(), "y": grouped['y'].tolist(), "t": grouped['t'].tolist()}
-
-        return {
-            "status": "success",
-            "data": result_data,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
-    finally:
-        cursor.close()
-        connection.close()
-
-
-@router.get("/one_device/oxygen_hydrogen_outlet_pressure")
-async def get_oxygen_hydrogen_outlet_pressure(machine_name: str, machine_model: str, start_time: str):
-    """
-    根据 machine_name 和 machine_model 从 wincc 表获取 oxygen_outlet_pressure 和 hydrogen_outlet_pressure 数据
-    使用传入的 start_time 作为统一的起始时间
-    """
-    connection = get_db_connection()
-    cursor = connection.cursor(pymysql.cursors.DictCursor)
-
-    try:
-        sql = '''
-              SELECT date, time, oxygen_outlet_pressure, hydrogen_outlet_pressure
-              FROM wincc
-              WHERE machine_name = %s
-                AND machine_model = %s
-                AND oxygen_outlet_pressure IS NOT NULL
-                AND hydrogen_outlet_pressure IS NOT NULL
-              ORDER BY date, time
-              '''
-        cursor.execute(sql, (machine_name, machine_model))
-        results = cursor.fetchall()
-
-        df = pd.DataFrame(results)
-
-        if df.empty:
-            return {
-                "status": "success",
-                "data": {"oxygen_outlet_pressure": {"x": [], "y": []}, "hydrogen_outlet_pressure": {"x": [], "y": []}},
-            }
-
-        df['date'] = pd.to_datetime(df['date'])
-
-        if pd.api.types.is_timedelta64_dtype(df['time']) or isinstance(df['time'].iloc[0], pd.Timedelta):
-            df['datetime'] = df['date'] + df['time']
-        else:
-            df['datetime'] = pd.to_datetime(df['date'].astype(str) + ' ' + df['time'].astype(str))
-
-        # 使用传入的 start_time 作为起始时间
-        global_start_time = pd.to_datetime(start_time)
-
-        result_data = {}
-
-        for field in ['oxygen_outlet_pressure', 'hydrogen_outlet_pressure']:
-            df[field] = pd.to_numeric(df[field], errors='coerce')
-
-            # 从起始时间开始筛选数据
-            field_df = df[df['datetime'] >= global_start_time].copy()
-
-            if field_df.empty:
-                result_data[field] = {"x": [], "y": [], "t": []}
-                continue
-
-            field_df['time_diff'] = ((field_df['datetime'] - global_start_time).dt.total_seconds() / 3600).astype(int)
-
-            grouped = field_df.groupby('time_diff').agg({
-                field: 'mean',
-                'datetime': 'first'  # 获取每个小时的第一个时间点
-            }).reset_index()
-
-            grouped.columns = ['x', 'y', 't']
-            grouped['y'] = grouped['y'].round(2)
-            # 将时间转换为字符串格式
-            grouped['t'] = grouped['t'].dt.strftime('%Y-%m-%d %H:%M:%S')
-
-            result_data[field] = {"x": grouped['x'].tolist(), "y": grouped['y'].tolist(), "t": grouped['t'].tolist()}
-
-        return {
-            "status": "success",
-            "data": result_data,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
-    finally:
-        cursor.close()
-        connection.close()
-
-
-@router.get("/one_device/oxygen_hydrogen_outlet_temp")
-async def get_oxygen_hydrogen_outlet_temp(machine_name: str, machine_model: str, start_time: str):
-    """
-    根据 machine_name 和 machine_model 从 wincc 表获取 oxygen_outlet_temp 和 hydrogen_outlet_temp 数据
-    使用传入的 start_time 作为统一的起始时间
-    """
-    connection = get_db_connection()
-    cursor = connection.cursor(pymysql.cursors.DictCursor)
-
-    try:
-        sql = '''
-              SELECT date, time, oxygen_outlet_temp, hydrogen_outlet_temp
-              FROM wincc
-              WHERE machine_name = %s
-                AND machine_model = %s
-                AND oxygen_outlet_temp IS NOT NULL
-                AND hydrogen_outlet_temp IS NOT NULL
-              ORDER BY date, time
-              '''
-        cursor.execute(sql, (machine_name, machine_model))
-        results = cursor.fetchall()
-
-        df = pd.DataFrame(results)
-
-        if df.empty:
-            return {
-                "status": "success",
-                "data": {"oxygen_outlet_temp": {"x": [], "y": []}, "hydrogen_outlet_temp": {"x": [], "y": []}},
-            }
-
-        df['date'] = pd.to_datetime(df['date'])
-
-        if pd.api.types.is_timedelta64_dtype(df['time']) or isinstance(df['time'].iloc[0], pd.Timedelta):
-            df['datetime'] = df['date'] + df['time']
-        else:
-            df['datetime'] = pd.to_datetime(df['date'].astype(str) + ' ' + df['time'].astype(str))
-
-        # 使用传入的 start_time 作为起始时间
-        global_start_time = pd.to_datetime(start_time)
-
-        result_data = {}
-
-        for field in ['oxygen_outlet_temp', 'hydrogen_outlet_temp']:
-            df[field] = pd.to_numeric(df[field], errors='coerce')
-
-            # 从起始时间开始筛选数据
-            field_df = df[df['datetime'] >= global_start_time].copy()
-
-            if field_df.empty:
-                result_data[field] = {"x": [], "y": [], "t": []}
-                continue
-
-            field_df['time_diff'] = ((field_df['datetime'] - global_start_time).dt.total_seconds() / 3600).astype(int)
-
-            grouped = field_df.groupby('time_diff').agg({
-                field: 'mean',
-                'datetime': 'first'  # 获取每个小时的第一个时间点
-            }).reset_index()
-
-            grouped.columns = ['x', 'y', 't']
-            grouped['y'] = grouped['y'].round(2)
-            # 将时间转换为字符串格式
-            grouped['t'] = grouped['t'].dt.strftime('%Y-%m-%d %H:%M:%S')
-
-            result_data[field] = {"x": grouped['x'].tolist(), "y": grouped['y'].tolist(), "t": grouped['t'].tolist()}
-
-        return {
-            "status": "success",
-            "data": result_data,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
-    finally:
-        cursor.close()
-        connection.close()
-
-
-@router.get("/one_device/oxygen_hydrogen_cross")
-async def get_oxygen_hydrogen_cross(machine_name: str, machine_model: str, start_time: str):
-    """
-    根据 machine_name 和 machine_model 从 wincc 表获取 oxygen_in_hydrogen 和 hydrogen_in_oxygen 数据
-    使用传入的 start_time 作为统一的起始时间
-    """
-    connection = get_db_connection()
-    cursor = connection.cursor(pymysql.cursors.DictCursor)
-
-    try:
-        sql = '''
-              SELECT date, time, oxygen_in_hydrogen, hydrogen_in_oxygen
-              FROM wincc
-              WHERE machine_name = %s
-                AND machine_model = %s
-                AND oxygen_in_hydrogen IS NOT NULL
-                AND hydrogen_in_oxygen IS NOT NULL
-              ORDER BY date, time
-              '''
-        cursor.execute(sql, (machine_name, machine_model))
-        results = cursor.fetchall()
-
-        df = pd.DataFrame(results)
-
-        if df.empty:
-            return {
-                "status": "success",
-                "data": {"oxygen_in_hydrogen": {"x": [], "y": []}, "hydrogen_in_oxygen": {"x": [], "y": []}},
-            }
-
-        df['date'] = pd.to_datetime(df['date'])
-
-        if pd.api.types.is_timedelta64_dtype(df['time']) or isinstance(df['time'].iloc[0], pd.Timedelta):
-            df['datetime'] = df['date'] + df['time']
-        else:
-            df['datetime'] = pd.to_datetime(df['date'].astype(str) + ' ' + df['time'].astype(str))
-
-        # 使用传入的 start_time 作为起始时间
-        global_start_time = pd.to_datetime(start_time)
-
-        result_data = {}
-
-        for field in ['oxygen_in_hydrogen', 'hydrogen_in_oxygen']:
-            df[field] = pd.to_numeric(df[field], errors='coerce')
-
-            # 从起始时间开始筛选数据
-            field_df = df[df['datetime'] >= global_start_time].copy()
-
-            if field_df.empty:
-                result_data[field] = {"x": [], "y": [], "t": []}
-                continue
-
-            field_df['time_diff'] = ((field_df['datetime'] - global_start_time).dt.total_seconds() / 3600).astype(int)
-
-            grouped = field_df.groupby('time_diff').agg({
-                field: 'mean',
-                'datetime': 'first'  # 获取每个小时的第一个时间点
-            }).reset_index()
-
-            grouped.columns = ['x', 'y', 't']
-            grouped['y'] = grouped['y'].round(2)
-            # 将时间转换为字符串格式
-            grouped['t'] = grouped['t'].dt.strftime('%Y-%m-%d %H:%M:%S')
-
-            result_data[field] = {"x": grouped['x'].tolist(), "y": grouped['y'].tolist(), "t": grouped['t'].tolist()}
-
-        return {
-            "status": "success",
-            "data": result_data,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
-    finally:
-        cursor.close()
-        connection.close()
-
-
-@router.get("/one_device/pressure_difference")
-async def get_pressure_difference(machine_name: str, machine_model: str, start_time: str):
-    """
-    根据 machine_name 和 machine_model 从 wincc 表获取电解槽进出口压差
-    直接获取 pressure_diff 字段的值
-    使用传入的 start_time 作为统一的起始时间
-    """
-    connection = get_db_connection()
-    cursor = connection.cursor(pymysql.cursors.DictCursor)
-
-    try:
-        sql = '''
-              SELECT date, time, pressure_diff
-              FROM wincc
-              WHERE machine_name = %s
-                AND machine_model = %s
-                AND pressure_diff IS NOT NULL
-              ORDER BY date, time
-              '''
-        cursor.execute(sql, (machine_name, machine_model))
-        results = cursor.fetchall()
-
-        df = pd.DataFrame(results)
-
-        if df.empty:
-            return {
-                "status": "success",
-                "data": {"x": [], "y": []},
-            }
-
-        df['date'] = pd.to_datetime(df['date'])
-
-        if pd.api.types.is_timedelta64_dtype(df['time']) or isinstance(df['time'].iloc[0], pd.Timedelta):
-            df['datetime'] = df['date'] + df['time']
-        else:
-            df['datetime'] = pd.to_datetime(df['date'].astype(str) + ' ' + df['time'].astype(str))
-
-        # 转换为数值类型
-        df['pressure_difference'] = pd.to_numeric(df['pressure_diff'], errors='coerce')
-
-        # 使用传入的 start_time 作为起始时间
-        global_start_time = pd.to_datetime(start_time)
-
-        # 从起始时间开始筛选数据
-        df = df[df['datetime'] >= global_start_time].copy()
-
-        if df.empty:
-            return {
-                "status": "success",
-                "data": {"x": [], "y": []},
-            }
-
-        # 计算时间差（小时），向下取整
-        df['time_diff'] = ((df['datetime'] - global_start_time).dt.total_seconds() / 3600).astype(int)
-
-        # 按小时分组计算平均值，同时获取每个小时的起始时间
-        grouped = df.groupby('time_diff').agg({
-            'pressure_difference': 'mean',
-            'datetime': 'first'  # 获取每个小时的第一个时间点
-        }).reset_index()
-
-        # 重命名列为图表格式：x, y, t
-        grouped.columns = ['x', 'y', 't']
-        grouped['y'] = grouped['y'].round(2)
-        # 将时间转换为字符串格式
-        grouped['t'] = grouped['t'].dt.strftime('%Y-%m-%d %H:%M:%S')
-
-        return {
-            "status": "success",
-            "data": {"x": grouped['x'].tolist(), "y": grouped['y'].tolist(), "t": grouped['t'].tolist()},
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
