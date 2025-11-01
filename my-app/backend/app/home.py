@@ -27,12 +27,16 @@ def get_db_connection():
 
 
 @router.get("/overview")
-async def get_overview(day: int = Query(1, description="查询天数: 1 或 7")):
+async def get_overview(
+    day: int = Query(1, description="查询天数: 1 或 7"),
+    last_query_time: str = Query(None, description="上次查询时间，用于增量更新")
+):
     """
     获取15个设备的电压概览数据
 
     参数:
     - day: 查询天数，默认为1天，可选值：1 或 7
+    - last_query_time: 上次查询时间，如果提供则只返回新增数据
 
     返回:
     {
@@ -46,7 +50,8 @@ async def get_overview(day: int = Query(1, description="查询天数: 1 或 7"))
                 ]
             },
             ...
-        ]
+        ],
+        "is_incremental": true/false
     }
     """
     if day not in [1, 7]:
@@ -58,8 +63,20 @@ async def get_overview(day: int = Query(1, description="查询天数: 1 或 7"))
         query_time = datetime.now()
         query_time_str = query_time.strftime("%Y-%m-%d %H:%M:%S")
 
-        # 计算开始时间（往前推day天）
-        start_time = query_time - timedelta(days=day)
+        # 判断是否为增量查询
+        is_incremental = last_query_time is not None
+        
+        # 计算开始时间
+        if is_incremental:
+            # 增量查询：从上次查询时间开始
+            try:
+                start_time = datetime.strptime(last_query_time, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="last_query_time格式错误，应为: YYYY-MM-DD HH:MM:SS")
+        else:
+            # 全量查询：往前推day天
+            start_time = query_time - timedelta(days=day)
+        
         start_date = start_time.strftime("%Y-%m-%d")
 
         connection = get_db_connection()
@@ -107,7 +124,8 @@ async def get_overview(day: int = Query(1, description="查询天数: 1 或 7"))
 
         return {
             "query_time": query_time_str,
-            "devices": devices_data
+            "devices": devices_data,
+            "is_incremental": is_incremental
         }
 
     except HTTPException:

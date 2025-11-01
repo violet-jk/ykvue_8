@@ -308,11 +308,13 @@ interface Device {
 interface OverviewResponse {
   query_time: string
   devices: Device[]
+  is_incremental?: boolean
 }
 
 // 响应式数据
 const router = useRouter()
 const loading = ref(false)
+const lastQueryTime = ref<string>('')  // 记录上次查询时间，用于增量更新
 
 // 从localStorage加载上次选择的天数，如果没有则默认为1
 const loadSelectedDay = (): number => {
@@ -393,7 +395,7 @@ const formattedCountdown = computed(() => {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
 })
 
-// 获取后端数据
+// 获取后端数据（全量加载）
 const fetchOverviewData = async () => {
   loading.value = true
   try {
@@ -404,6 +406,7 @@ const fetchOverviewData = async () => {
     })
 
     queryTime.value = response.data.query_time
+    lastQueryTime.value = response.data.query_time  // 记录查询时间
     devicesData.value = response.data.devices
 
     // 获取数据后初始化图表
@@ -415,6 +418,55 @@ const fetchOverviewData = async () => {
     ElMessage.error('获取数据失败，请稍后重试')
   } finally {
     loading.value = false
+  }
+}
+
+// 增量更新数据（只获取新增数据）
+const fetchIncrementalData = async () => {
+  if (!lastQueryTime.value) {
+    // 如果没有上次查询时间，执行全量加载
+    await fetchOverviewData()
+    return
+  }
+
+  try {
+    const response = await axios.get<OverviewResponse>('/api/home/overview', {
+      params: {
+        day: selectedDay.value,
+        last_query_time: lastQueryTime.value
+      }
+    })
+
+    const newQueryTime = response.data.query_time
+    const newDevicesData = response.data.devices
+    
+    // 更新查询时间
+    queryTime.value = newQueryTime
+    lastQueryTime.value = newQueryTime
+
+    // 合并新数据到现有数据
+    newDevicesData.forEach(newDevice => {
+      const existingDevice = devicesData.value.find(d => d.machine_name === newDevice.machine_name)
+      
+      if (existingDevice) {
+        // 如果设备已存在，追加新数据点
+        if (newDevice.voltage_data.length > 0) {
+          existingDevice.voltage_data.push(...newDevice.voltage_data)
+          
+          // 更新图表数据（增量添加点）
+          updateChartData(newDevice.machine_name, newDevice.voltage_data)
+        }
+      } else {
+        // 如果是新设备，直接添加
+        devicesData.value.push(newDevice)
+      }
+    })
+
+    console.log(`增量更新完成，新增数据点: ${newDevicesData.reduce((sum, d) => sum + d.voltage_data.length, 0)}`)
+  } catch (error) {
+    console.error('增量更新失败:', error)
+    // 增量更新失败时，回退到全量加载
+    await fetchOverviewData()
   }
 }
 
@@ -439,9 +491,9 @@ const startAutoRefresh = () => {
     clearInterval(countdownInterval)
   }
 
-  // 每300秒（5分钟）刷新一次数据
+  // 每300秒（5分钟）刷新一次数据（使用增量更新）
   refreshInterval = setInterval(() => {
-    fetchOverviewData()
+    fetchIncrementalData()  // 使用增量更新替代全量加载
     fetchMqttStatus() // 同时检查MQTT状态
     refreshCountdown.value = 300
   }, 300000)
@@ -509,8 +561,6 @@ watch(systemLogs, (newLogs) => {
 
   // 如果最后一条日志内容与上次不同，说明有新日志，需要滚动到底部
   if (currentLastLog && currentLastLog !== lastLogContent) {
-    console.log(`[日志] 检测到新日志，自动滚动到底部`)
-    console.log(`[日志] 最新日志: ${currentLastLog.substring(0, 80)}...`)
     scrollLogsToBottom()
   }
 
@@ -692,6 +742,8 @@ const selectDay = (day: number) => {
   selectedDay.value = day
   // 保存到localStorage
   localStorage.setItem('selectedDay', day.toString())
+  // 切换天数时需要全量加载
+  lastQueryTime.value = ''  // 清空上次查询时间
   fetchOverviewData()
 }
 
@@ -989,7 +1041,50 @@ const createDeviceDetailChart = (machineName: string) => {
     }
   } as any)
 
-  console.log('图表创建完成')
+}
+
+// 增量更新图表数据（不重绘整个图表）
+const updateChartData = (machineName: string, newVoltageData: VoltageData[]) => {
+  const chartId = 'combined-chart'
+  const chart = chartsMap.get(chartId)
+  
+  if (!chart) {
+    // 如果图表不存在，初始化图表
+    initCharts()
+    return
+  }
+
+  // 查找对应的系列
+  const series = chart.series.find(s => s.name === machineName)
+  
+  if (!series) {
+    // 如果系列不存在，可能是新设备，需要重新初始化图表
+    console.log(`设备 ${machineName} 的系列不存在，重新初始化图表`)
+    initCharts()
+    return
+  }
+
+  // 将新数据点添加到系列中
+  newVoltageData.forEach(d => {
+    const timePoint = `${d.date} ${d.time}`
+    const timestamp = new Date(timePoint).getTime()
+    
+    // 使用 addPoint 方法增量添加数据点
+    // 参数: [x, y], redraw=false (批量添加时不重绘), shift=false (不移除旧数据), animation=false (无动画)
+    series.addPoint([timestamp, d.avg_voltage], false, false, false)
+  })
+
+  // 更新 x 轴最大值
+  const queryTimestamp = new Date(queryTime.value).getTime()
+  if (chart.xAxis && chart.xAxis[0]) {
+    chart.xAxis[0].update({
+      max: queryTimestamp
+    }, false)
+  }
+
+  // 批量添加完成后，一次性重绘图表
+  chart.redraw()
+  
 }
 
 // 初始化图表
