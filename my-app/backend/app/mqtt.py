@@ -354,7 +354,14 @@ def extract_machine_name(mqtt_name: str) -> str:
     从MQTT字段名中提取设备编号
     例如: SYS_T/CM_H -> 1, SYS_T/CM_H_1 -> 2, SYS_T/CM_H_2 -> 3, ... SYS_T/CM_H_14 -> 15
          CELL1 -> 1, CELL1_1 -> 2, CELL1_2 -> 3, ... CELL1_14 -> 15
+         1_Type -> 1, 2_Type -> 2, ... 15_Type -> 15
     """
+    # 检查是否是 数字_Type 格式
+    if '_Type' in mqtt_name:
+        parts = mqtt_name.split('_Type')
+        if parts[0].isdigit():
+            return parts[0]
+
     # 查找最后一个下划线后的数字
     parts = mqtt_name.split('_')
 
@@ -380,8 +387,13 @@ def map_mqtt_to_db_field(mqtt_name: str, machine_name: str) -> str:
     返回:
     - 数据库字段名
     """
-    # 去掉设备编号后缀,获取基础字段名
     base_name = mqtt_name
+
+    # 检查是否是 数字_Type 格式 (映射到 machine_model)
+    if '_Type' in base_name:
+        return 'machine_model'
+
+    # 去掉设备编号后缀,获取基础字段名
     if machine_name != '1':
         # 移除 _数字 后缀
         suffix = f"_{int(machine_name) - 1}"
@@ -444,7 +456,6 @@ def map_mqtt_to_db_field(mqtt_name: str, machine_name: str) -> str:
     }
 
     return field_mapping.get(base_name, None)
-
 
 
 def start_mqtt_client():

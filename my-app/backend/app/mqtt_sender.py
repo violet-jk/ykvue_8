@@ -6,6 +6,7 @@ MQTT模拟数据发送工具
 import json
 import time
 import random
+import string
 from datetime import datetime, timezone
 import paho.mqtt.client as mqtt
 from paho.mqtt.client import CallbackAPIVersion
@@ -31,6 +32,9 @@ send_stats = {
     'success': 0,
     'failed': 0
 }
+
+# 设备型号映射 (启动时生成,每个设备一个随机8字符字符串)
+device_models = {}
 
 # 数据库字段到MQTT字段名的映射 (根据mqtt.py中的map_mqtt_to_db_field反向映射)
 DB_TO_MQTT_MAPPING = {
@@ -85,8 +89,36 @@ DB_TO_MQTT_MAPPING = {
     'pressure_diff': 'ELE_PDT',
     'sep_pressure_diff': 'SEP_PDT',
     'std_deviation': '标准差',
+    'machine_model': '_Type',  # 设备型号字段
 }
 
+
+
+def generate_random_string(length=8):
+    """
+    生成随机字符串
+    
+    参数:
+    - length: 字符串长度
+    
+    返回:
+    - 随机字符串
+    """
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
+
+
+def initialize_device_models():
+    """
+    初始化设备型号映射
+    为每个设备生成一个随机的8字符字符串
+    """
+    global device_models
+    for device_num in range(1, NUM_DEVICES + 1):
+        device_models[device_num] = generate_random_string(8)
+    print("设备型号已生成:")
+    for device_num, model in device_models.items():
+        print(f"  设备{device_num}: {model}")
+    print()
 
 
 def generate_random_value(field_name, data_type):
@@ -95,7 +127,7 @@ def generate_random_value(field_name, data_type):
     
     参数:
     - field_name: 数据库字段名
-    - data_type: 数据类型 ('INT', 'DECIMAL', 等)
+    - data_type: 数据类型 ('INT', 'DECIMAL', 'STRING' 等)
     
     返回:
     - 随机生成的值
@@ -150,6 +182,10 @@ def generate_random_value(field_name, data_type):
         else:
             return round(random.uniform(0.0, 10.0), 4)
     
+    # STRING - 设备型号
+    elif data_type == 'STRING':
+        return field_name  # 直接返回传入的字符串值
+    
     return 0
 
 
@@ -168,6 +204,7 @@ def generate_device_data(device_num):
     
     # 字段定义: (db_field_name, data_type)
     fields = [
+        ('machine_model', 'STRING'),  # 设备型号 - 放在第一个
         ('hours', 'INT'),
         ('total_current', 'DECIMAL_1'),
         ('total_voltage', 'DECIMAL_1'),
@@ -227,14 +264,19 @@ def generate_device_data(device_num):
         if not mqtt_field:
             continue
         
-        # 添加设备编号后缀 (1号设备不加后缀, 2号设备加_1, 3号设备加_2, 以此类推)
-        if device_num == 1:
-            mqtt_name = mqtt_field
+        # 特殊处理 machine_model 字段 (格式: 设备编号_Type)
+        if db_field == 'machine_model':
+            mqtt_name = f"{device_num}_Type"
+            value = device_models.get(device_num, generate_random_string(8))
         else:
-            mqtt_name = f"{mqtt_field}_{device_num - 1}"
-        
-        # 生成随机值
-        value = generate_random_value(db_field, data_type)
+            # 添加设备编号后缀 (1号设备不加后缀, 2号设备加_1, 3号设备加_2, 以此类推)
+            if device_num == 1:
+                mqtt_name = mqtt_field
+            else:
+                mqtt_name = f"{mqtt_field}_{device_num - 1}"
+            
+            # 生成随机值
+            value = generate_random_value(db_field, data_type)
         
         # 构建payload
         payload = {
@@ -246,7 +288,6 @@ def generate_device_data(device_num):
         
         # 构建topic
         topic = f"WinCC/AEM_SYS/{mqtt_name}"
-        
         messages.append((topic, payload))
     
     return messages
@@ -281,6 +322,9 @@ def save_messages_to_file(messages, filename='mqtt_data.txt'):
         print("[警告] 没有消息需要保存")
         return
     
+    # 计算每个设备的字段数量（动态计算）
+    fields_per_device = total_messages // NUM_DEVICES
+    
     try:
         with open(filename, 'a', encoding='utf-8') as f:
             # 写入时间戳
@@ -294,9 +338,9 @@ def save_messages_to_file(messages, filename='mqtt_data.txt'):
                 f.write(f"设备 {device_num} 的数据:\n")
                 f.write(f"{'='*80}\n\n")
                 
-                # 获取该设备的消息
-                start_idx = (device_num - 1) * 51
-                end_idx = start_idx + 51
+                # 获取该设备的消息（动态计算索引）
+                start_idx = (device_num - 1) * fields_per_device
+                end_idx = start_idx + fields_per_device
                 device_msgs = messages[start_idx:end_idx]
                 
                 # 保存所有payload
@@ -382,7 +426,7 @@ def send_messages_to_mqtt(messages, send_time=5):
     
     end_time = time.time()
     elapsed_time = end_time - start_time
-    
+    print('发送成功', send_stats['success'])
     # 停止客户端
     try:
         client.loop_stop()
@@ -414,6 +458,9 @@ def send_once():
 def main():
     """主函数 - 定时发送模式"""
     print(f"MQTT模拟数据发送工具已启动 - 间隔{SEND_INTERVAL_MINUTES}分钟\n")
+    
+    # 初始化设备型号
+    initialize_device_models()
     
     # 立即执行第一次发送
     send_once()

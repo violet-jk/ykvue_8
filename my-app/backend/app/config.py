@@ -14,3 +14,6 @@ MQTT_CONFIG = {
     "keepalive": 120,
     "topic": "WinCC/#",  # 订阅WinCC下的所有主题
 }
+
+# debug 模式
+debug = False
