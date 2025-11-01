@@ -105,20 +105,33 @@
     </div>
 
     <!-- 设备实时电压状态卡片 -->
-    <el-card class="voltage-status-card">
+    <el-card class="voltage-status-card" :class="{ 'loading-animation': loading }">
       <template #header>
         <div class="voltage-status-header">
-          <span class="voltage-status-title">设备实时电压状态</span>
+          <span class="voltage-status-title">
+            设备实时电压状态
+            <span v-if="loading" class="loading-indicator">
+              <span class="loading-dot"></span>
+              <span class="loading-dot"></span>
+              <span class="loading-dot"></span>
+            </span>
+          </span>
           <span class="voltage-status-subtitle">（绿色：运行中 | 灰色：停止）</span>
         </div>
       </template>
       <template #default>
-        <div class="devices-grid">
+        <div class="devices-grid" :class="{ 'refreshing': loading }">
+          <!-- 加载动画遮罩 -->
+          <div v-if="loading" class="loading-overlay-grid">
+            <div class="scanning-line"></div>
+            <div class="refresh-pulse"></div>
+          </div>
+          
           <div
               v-for="device in allDevicesStatus"
               :key="device.machine_name"
               class="device-item"
-              :class="{ 'running': device.isRunning, 'stopped': !device.isRunning }"
+              :class="{ 'running': device.isRunning, 'stopped': !device.isRunning, 'loading': loading }"
               @click="handleDeviceClick(device.machine_name)"
           >
             <div class="device-status-dot" :class="{ 'running': device.isRunning, 'stopped': !device.isRunning }"></div>
@@ -2010,6 +2023,204 @@ onUnmounted(() => {
   font-size: 12px;
   font-weight: 600;
   color: #94a3b8;
+}
+
+/* 加载动画效果 */
+.voltage-status-card.loading-animation {
+  position: relative;
+}
+
+.voltage-status-card.loading-animation::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(14, 165, 233, 0.1) 50%,
+    transparent 100%
+  );
+  animation: card-shimmer 2s infinite;
+  pointer-events: none;
+  z-index: 10;
+}
+
+@keyframes card-shimmer {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+/* 标题加载指示器 */
+.loading-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.loading-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #0ea5e9;
+  animation: bounce-loading 1.4s ease-in-out infinite;
+}
+
+.loading-dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.loading-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.loading-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes bounce-loading {
+  0%, 80%, 100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
+/* 设备网格加载状态 */
+.devices-grid.refreshing {
+  position: relative;
+}
+
+.loading-overlay-grid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+  overflow: hidden;
+}
+
+/* 扫描线动画 */
+.scanning-line {
+  position: absolute;
+  top: -100%;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(14, 165, 233, 0.3) 20%,
+    rgba(14, 165, 233, 0.8) 50%,
+    rgba(14, 165, 233, 0.3) 80%,
+    transparent 100%
+  );
+  box-shadow: 0 0 20px rgba(14, 165, 233, 0.8);
+  animation: scan-vertical 2s ease-in-out infinite;
+}
+
+@keyframes scan-vertical {
+  0% {
+    top: -100%;
+  }
+  100% {
+    top: 100%;
+  }
+}
+
+/* 脉冲波纹效果 */
+.refresh-pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100px;
+  height: 100px;
+  margin: -50px 0 0 -50px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(14, 165, 233, 0.3) 0%, transparent 70%);
+  animation: pulse-expand 2s ease-out infinite;
+}
+
+@keyframes pulse-expand {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+/* 设备项加载状态 */
+.device-item.loading {
+  animation: device-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes device-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.device-item.loading .device-status-dot {
+  animation: dot-loading 1s ease-in-out infinite;
+}
+
+@keyframes dot-loading {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.6;
+  }
+}
+
+.device-item.loading .voltage-value {
+  position: relative;
+  overflow: hidden;
+}
+
+.device-item.loading .voltage-value::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.6) 50%,
+    transparent 100%
+  );
+  animation: value-shimmer 1.5s infinite;
+}
+
+@keyframes value-shimmer {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
 }
 
 /* 响应式布局 */
