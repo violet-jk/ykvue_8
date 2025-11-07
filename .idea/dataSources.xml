@@ -8,5 +8,12 @@
       <jdbc-url>jdbc:mysql://gz-cdb-bqpsb1r0.sql.tencentcdb.com:21325</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
+    <data-source source="LOCAL" name="config.db" uuid="b6d57dc6-e109-4589-8395-c57b987c40d4">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
+      <jdbc-url>jdbc:sqlite:E:/api/config.db</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
   </component>
 </project>

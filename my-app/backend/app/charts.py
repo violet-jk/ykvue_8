@@ -112,14 +112,14 @@ async def get_all_device_data(machine_name: str, machine_model: str):
             # 转换为数值类型
             cell_df['value'] = pd.to_numeric(cell_df['value'], errors='coerce')
 
-            # 找到第一个非0且>1400的值的索引
-            mask = (cell_df['value'] > 0) & (cell_df['value'] > 1400)
+            # 找到第一个非0且>1680的值的索引
+            mask = (cell_df['value'] > 0) & (cell_df['value'] > 1680)
             valid_indices = cell_df[mask].index
 
             if len(valid_indices) == 0:
                 continue
 
-            # 从第一个>1400的值开始计算
+            # 从第一个>1680的值开始计算
             start_idx = valid_indices[0]
             cell_df = cell_df.loc[start_idx:].copy()
 
@@ -148,22 +148,22 @@ async def get_all_device_data(machine_name: str, machine_model: str):
                 "global_start_time": None
             }
 
-        # ===== 步骤2: 获取剩余cell的起始时间点,为所有cell均>1400的最小时间点 =====
+        # ===== 步骤2: 获取剩余cell的起始时间点,为所有cell均>1680的最小时间点 =====
         start_time_candidates = []
         for cell_field in valid_cells:
             cell_df = df[['datetime', cell_field]].copy()
             cell_df.columns = ['datetime', 'value']
             cell_df['value'] = pd.to_numeric(cell_df['value'], errors='coerce')
 
-            # 找到第一个非0且>1400的值
-            mask = (cell_df['value'] > 0) & (cell_df['value'] > 1400)
+            # 找到第一个非0且>1680的值
+            mask = (cell_df['value'] > 0) & (cell_df['value'] > 1680)
             valid_indices = cell_df[mask].index
 
             if len(valid_indices) > 0:
                 start_time = cell_df.loc[valid_indices[0], 'datetime']
                 start_time_candidates.append(start_time)
 
-        # 使用最晚的起始时间,确保所有cell在这个时间点都>1400
+        # 使用最晚的起始时间,确保所有cell在这个时间点都>1680
         global_start_time = max(start_time_candidates)
 
         # ===== 步骤3: 基于global_start_time过滤数据,并获取实际的时间点列表 =====
@@ -177,10 +177,10 @@ async def get_all_device_data(machine_name: str, machine_model: str):
         # 使用全局起始时间筛选数据
         cell_df_filtered = cell_df_filtered[cell_df_filtered['datetime'] >= global_start_time].copy()
 
-        # 过滤掉任意cell < 1400 的行,确保所有cell都>=1400
+        # 过滤掉任意cell < 1680 的行,确保所有cell都>=1680
         mask = pd.Series([True] * len(cell_df_filtered), index=cell_df_filtered.index)
         for cell_field in valid_cells:
-            mask &= (cell_df_filtered[cell_field] >= 1400)
+            mask &= (cell_df_filtered[cell_field] >= 1680)
 
         cell_df_filtered = cell_df_filtered[mask].copy()
 
@@ -231,7 +231,7 @@ async def get_all_device_data(machine_name: str, machine_model: str):
             field_df = df[['datetime', field_name]].copy()
             field_df[field_name] = pd.to_numeric(field_df[field_name], errors='coerce')
 
-            # 应用额外的过滤条件(如avg_voltage >= 1400)
+            # 应用额外的过滤条件(如avg_voltage >= 1680)
             if filter_condition is not None:
                 field_df = field_df[filter_condition(field_df[field_name])].copy()
 
