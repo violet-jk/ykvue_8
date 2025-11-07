@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from .config import DB_CONFIG
+from pydantic import BaseModel
 
 router = APIRouter()
 
@@ -195,13 +196,31 @@ async def get_all_device_data(machine_name: str, machine_model: str):
         valid_datetimes = cell_df_filtered['datetime'].unique()
         valid_datetimes = pd.Series(valid_datetimes).sort_values().reset_index(drop=True)
 
-        # ===== 新增步骤: 将不连续的时间映射为连续的时间序列(每10分钟一个点) =====
+        # ===== 新增步骤: 将不连续的时间映射为连续的时间序列 =====
+        # 规则: 如果时间差<=60分钟,保持原差值; 如果>60分钟,只增加1分钟
+
+        # 计算所有时间与前一个时间的差值(分钟)
+        time_diffs = []
+        for i in range(len(valid_datetimes)):
+            if i == 0:
+                time_diffs.append(0)  # 第一个点差值为0
+            else:
+                diff_minutes = (valid_datetimes[i] - valid_datetimes[i - 1]).total_seconds() / 60
+                time_diffs.append(diff_minutes)
+
+        # 生成连续时间序列
+        continuous_datetimes = [global_start_time]  # 第一个点使用全局起始时间
+        for i in range(1, len(valid_datetimes)):
+            diff = time_diffs[i]
+            if diff <= 60:
+                # 差值<=60分钟,保持原差值
+                next_time = continuous_datetimes[-1] + pd.Timedelta(minutes=diff)
+            else:
+                # 差值>60分钟,只增加1小时
+                next_time = continuous_datetimes[-1] + pd.Timedelta(hours=1)
+            continuous_datetimes.append(next_time)
+
         # 创建时间映射表: 原始时间 -> 连续时间
-        continuous_datetimes = pd.date_range(
-            start=global_start_time,
-            periods=len(valid_datetimes),
-            freq='10min'
-        )
         datetime_mapping = dict(zip(valid_datetimes, continuous_datetimes))
 
         # 保留原始时间用于显示,添加连续时间列用于计算time_diff
@@ -209,7 +228,8 @@ async def get_all_device_data(machine_name: str, machine_model: str):
         cell_df_filtered['datetime_continuous'] = cell_df_filtered['datetime'].map(datetime_mapping)  # 连续时间
 
         # 计算时间差(小时),向下取整,用于分组(使用连续时间计算)
-        cell_df_filtered['time_diff'] = ((cell_df_filtered['datetime_continuous'] - global_start_time).dt.total_seconds() / 3600).astype(int)
+        cell_df_filtered['time_diff'] = (
+                    (cell_df_filtered['datetime_continuous'] - global_start_time).dt.total_seconds() / 3600).astype(int)
 
         # ===== 步骤4: 处理cell电压数据 =====
         voltage_data = {}
@@ -261,7 +281,8 @@ async def get_all_device_data(machine_name: str, machine_model: str):
             field_df['datetime_continuous'] = field_df['datetime'].map(datetime_mapping)  # 连续时间
 
             # 计算时间差(小时),向下取整,用于分组(使用连续时间计算)
-            field_df['time_diff'] = ((field_df['datetime_continuous'] - global_start_time).dt.total_seconds() / 3600).astype(int)
+            field_df['time_diff'] = (
+                        (field_df['datetime_continuous'] - global_start_time).dt.total_seconds() / 3600).astype(int)
 
             # 按time_diff分组计算平均值,同时获取每组的第一个原始时间点
             grouped = field_df.groupby('time_diff').agg({
@@ -319,3 +340,83 @@ async def get_all_device_data(machine_name: str, machine_model: str):
     finally:
         cursor.close()
         connection.close()
+
+
+# 请求体模型
+class UpdateMachineModelRequest(BaseModel):
+    machine_name: str
+    old_machine_model: str
+    new_machine_model: str
+
+
+@router.post("/update/machine_model")
+async def update_machine_model(request: UpdateMachineModelRequest):
+    """
+    更新数据库中的设备型号
+
+    参数:
+    - machine_name: 设备名称
+    - old_machine_model: 原设备型号
+    - new_machine_model: 新设备型号
+
+    返回:
+    {
+        "status": "success",
+        "updated_count": 123,
+        "message": "更新成功"
+    }
+    """
+    connection = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # 先查询将要更新的数据条数
+        count_sql = """
+                    SELECT COUNT(*) as count
+                    FROM wincc
+                    WHERE machine_name = %s
+                      AND machine_model = %s \
+                    """
+        cursor.execute(count_sql, (request.machine_name, request.old_machine_model))
+        result = cursor.fetchone()
+        count = result[0] if result else 0
+
+        if count == 0:
+            cursor.close()
+            raise HTTPException(
+                status_code=404,
+                detail=f"未找到设备名称为'{request.machine_name}'且型号为'{request.old_machine_model}'的数据"
+            )
+
+        # 执行更新操作
+        update_sql = """
+                     UPDATE wincc
+                     SET machine_model = %s
+                     WHERE machine_name = %s
+                       AND machine_model = %s \
+                     """
+        cursor.execute(update_sql, (request.new_machine_model, request.machine_name, request.old_machine_model))
+        connection.commit()
+
+        updated_count = cursor.rowcount
+
+        cursor.close()
+
+        return {
+            "status": "success",
+            "updated_count": updated_count,
+            "message": f"成功更新{updated_count}条数据"
+        }
+
+    except HTTPException:
+        if connection:
+            connection.rollback()
+        raise
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        raise HTTPException(status_code=500, detail=f"更新设备型号失败: {str(e)}")
+    finally:
+        if connection:
+            connection.close()

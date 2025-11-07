@@ -69,26 +69,38 @@
             />
           </el-select>
         </div>
-        <div style="flex: 1; min-width: 100px;max-width: 200px;">
+        <div style="flex: 1; min-width: 100px;max-width: 300px;">
           <div style="margin-bottom: 4px; font-size: 14px; color: #606266;">设备型号 (Machine Model)</div>
-          <el-select
-              v-model="selectedMachineModel"
-              placeholder="请选择设备型号"
-              filterable
-              clearable
-              style="width: 100%"
-              :loading="deviceListLoading"
-              :disabled="!selectedMachineName"
-              @change="handleMachineModelChange"
-          >
-            <el-option
-                v-for="model in machineModelList"
-                :key="model"
-                :label="model"
-                :value="model"
-            />
-          </el-select>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <el-select
+                v-model="selectedMachineModel"
+                placeholder="请选择设备型号"
+                filterable
+                clearable
+                style="flex: 1;"
+                :loading="deviceListLoading"
+                :disabled="!selectedMachineName"
+                @change="handleMachineModelChange"
+            >
+              <el-option
+                  v-for="model in machineModelList"
+                  :key="model"
+                  :label="model"
+                  :value="model"
+              />
+            </el-select>
+            <el-button
+                type="warning"
+                plain
+                :disabled="!selectedMachineName || !selectedMachineModel"
+                @click="handleUpdateMachineModel"
+                style="white-space: nowrap;"
+            >
+              修改设备型号
+            </el-button>
+          </div>
         </div>
+        <el-divider v-if="chartDataLoaded" direction="vertical" style="height: 50px; margin: 0 8px;"/>
         <div v-if="chartDataLoaded" style="display: flex; gap: 16px; align-items: center;">
           <div>
             <div style="margin-bottom: 4px; font-size: 14px; color: #606266;">Y轴最小值 (Y Min)</div>
@@ -118,6 +130,7 @@
             <el-button @click="autoFitYAxis" type="primary">自动适配</el-button>
           </div>
         </div>
+        <el-divider direction="vertical" style="height: 50px; margin: 0 8px;"/>
       </div>
     </el-card>
 
@@ -178,7 +191,7 @@
 <script lang="ts" setup>
 import {ref, onMounted, computed, onBeforeUnmount, nextTick} from 'vue';
 import {useRouter} from 'vue-router';
-import {ElMessage} from 'element-plus';
+import {ElMessage, ElMessageBox} from 'element-plus';
 import Highcharts from 'highcharts';
 import 'highcharts/modules/boost';
 import ChartSkeleton from './ChartSkeleton.vue';
@@ -529,6 +542,103 @@ const handleYAxisChange = () => {
   }
 };
 
+// 修改设备型号
+const handleUpdateMachineModel = async () => {
+  if (!selectedMachineName.value || !selectedMachineModel.value) {
+    ElMessage.warning('请先选择设备名称和型号');
+    return;
+  }
+
+  // 第一步：输入新的设备型号
+  ElMessageBox.prompt('请输入新的设备型号', '修改设备型号', {
+    confirmButtonText: '下一步',
+    cancelButtonText: '取消',
+    inputPattern: /^.+$/,
+    inputErrorMessage: '设备型号不能为空',
+    inputPlaceholder: '请输入新的设备型号'
+  }).then(({value: newModel}) => {
+    if (!newModel || newModel.trim() === '') {
+      ElMessage.warning('设备型号不能为空');
+      return;
+    }
+
+    const trimmedNewModel = newModel.trim();
+
+    // 第二步：二次确认
+    ElMessageBox.confirm(
+        `<div style="line-height: 1.8;">
+          <p style="margin-bottom: 12px;"><strong>请确认以下修改信息：</strong></p>
+          <p>设备名称：<span style="color: #409EFF; font-weight: 500;">${selectedMachineName.value}</span></p>
+          <p>原设备型号：<span style="color: #E6A23C; font-weight: 500;">${selectedMachineModel.value}</span></p>
+          <p>新设备型号：<span style="color: #67C23A; font-weight: 500;">${trimmedNewModel}</span></p>
+          <p style="margin-top: 12px; padding: 8px; background-color: #FEF0F0; border-left: 4px solid #F56C6C; color: #F56C6C;">
+            <strong>⚠️ 警告：</strong>此操作将修改数据库中的所有相关数据，一旦修改无法撤回！
+          </p>
+        </div>`,
+        '确认修改设备型号',
+        {
+          confirmButtonText: '确定修改',
+          cancelButtonText: '取消',
+          type: 'warning',
+          dangerouslyUseHTMLString: true,
+          confirmButtonClass: 'el-button--danger'
+        }
+    ).then(async () => {
+      // 执行修改
+      await updateMachineModelInDatabase(selectedMachineName.value, selectedMachineModel.value, trimmedNewModel);
+    }).catch(() => {
+      ElMessage.info('已取消修改');
+    });
+  }).catch(() => {
+    ElMessage.info('已取消修改');
+  });
+};
+
+// 调用后端API更新设备型号
+const updateMachineModelInDatabase = async (machineName: string, oldModel: string, newModel: string) => {
+  const loading = ElMessage({
+    message: '正在更新数据库...',
+    type: 'info',
+    duration: 0
+  });
+
+  try {
+    const response = await fetch('/api/get/update/machine_model', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        machine_name: machineName,
+        old_machine_model: oldModel,
+        new_machine_model: newModel
+      })
+    });
+
+    const result = await response.json();
+
+    if (result.status === 'success') {
+      ElMessage.success(`修改成功！共更新 ${result.updated_count} 条数据`);
+
+      // 更新当前选中的型号到localStorage
+      selectedMachineModel.value = newModel;
+      localStorage.setItem('cached_machine_model_optimized', newModel);
+
+      // 延迟后刷新页面
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } else {
+      ElMessage.error(`修改失败: ${result.detail || '未知错误'}`);
+    }
+  } catch (error) {
+    console.error('Error updating machine model:', error);
+    ElMessage.error('修改失败，请检查网络连接');
+  } finally {
+    loading.close();
+  }
+};
+
 // 渲染图表函数
 const renderChart = () => {
   if (!chartContainer.value || !allData.value) return;
@@ -751,12 +861,17 @@ const renderChart = () => {
     title: {text: chartTitle},
     xAxis: {
       title: {text: '时间 (小时)'},
-      crosshair: true,
+      crosshair: {
+        color: '#c50404',
+        width: 1,
+        dashStyle: 'Solid',
+        zIndex: 5
+      },
       max: xAxisMax
     },
     yAxis: {
       title: {text: yAxisTitle},
-      crosshair: true,
+      crosshair: false,
       min: autoYMin,
       max: autoYMax,
       startOnTick: false,
@@ -846,7 +961,7 @@ const renderChart = () => {
         animation: false,
         marker: {enabled: false},
         states: {
-          hover: {enabled: true, lineWidth: 4}
+          hover: {enabled: false, lineWidth: 4}
         }
       }
     },
