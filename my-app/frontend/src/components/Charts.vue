@@ -589,7 +589,7 @@ const renderChart = () => {
 
       if (singleData.x.length > 0) {
         const maxX = Math.max(...singleData.x);
-        xAxisMax = maxX * 1.2;
+        xAxisMax = maxX * 2;
       }
     }
   };
@@ -620,7 +620,7 @@ const renderChart = () => {
 
         if (seriesData.x.length > 0 && xAxisMax === 0) {
           const maxX = Math.max(...seriesData.x);
-          xAxisMax = maxX * 1.2;
+          xAxisMax = maxX * 2;
         }
       }
     });
@@ -678,7 +678,7 @@ const renderChart = () => {
     if (firstSeries && 'data' in firstSeries && Array.isArray(firstSeries.data) && firstSeries.data.length > 0) {
       const xValues = (firstSeries.data as Array<{ x: number, y: number, t?: string }>).map(point => point.x);
       const maxX = Math.max(...xValues);
-      xAxisMax = maxX * 1.2;
+      xAxisMax = maxX * 2;
     }
   } else if (selectedChartType.value === 'voltage_range') {
     processSingleSeries(data as SingleSeriesData, '极差', '#7cb5ec');
@@ -822,7 +822,7 @@ const renderChart = () => {
             unit = 'ppm';
             precision = 2;
           } else if (selectedChartType.value === 'hydrogen_flow_meter') {
-            unit = '';
+            unit = 'L/min';
             precision = 2;
           }
 

@@ -68,7 +68,7 @@ async def get_all_device_data(machine_name: str, machine_model: str):
     try:
         # 一次性查询所有需要的字段
         sql = '''
-              SELECT date, time, cell_1, cell_2, cell_3, cell_4, cell_5, cell_6, cell_7, cell_8, cell_9, cell_10, cell_11, cell_12, cell_13, cell_14, cell_15, cell_16, cell_17, cell_18, cell_19, cell_20, avg_voltage, voltage_range, pump_pressure, specific_gravity, hydrogen_flow_meter, inlet_pressure, oxygen_outlet_pressure, hydrogen_outlet_pressure, oxygen_outlet_temp, hydrogen_outlet_temp, oxygen_in_hydrogen, hydrogen_in_oxygen, pressure_diff
+              SELECT id, date, time, cell_1, cell_2, cell_3, cell_4, cell_5, cell_6, cell_7, cell_8, cell_9, cell_10, cell_11, cell_12, cell_13, cell_14, cell_15, cell_16, cell_17, cell_18, cell_19, cell_20, avg_voltage, voltage_range, pump_pressure, specific_gravity, hydrogen_flow_meter, inlet_pressure, oxygen_outlet_pressure, hydrogen_outlet_pressure, oxygen_outlet_temp, hydrogen_outlet_temp, oxygen_in_hydrogen, hydrogen_in_oxygen, pressure_diff
               FROM wincc
               WHERE machine_name = %s
                 AND machine_model = %s
@@ -168,7 +168,7 @@ async def get_all_device_data(machine_name: str, machine_model: str):
 
         # ===== 步骤3: 基于global_start_time过滤数据,并获取实际的时间点列表 =====
         # 先处理cell数据,获取过滤后的实际时间点
-        cell_df_filtered = df[['datetime'] + valid_cells].copy()
+        cell_df_filtered = df[['datetime', 'id'] + valid_cells].copy()
 
         # 转换所有cell列为数值类型
         for cell_field in valid_cells:
@@ -195,20 +195,34 @@ async def get_all_device_data(machine_name: str, machine_model: str):
         valid_datetimes = cell_df_filtered['datetime'].unique()
         valid_datetimes = pd.Series(valid_datetimes).sort_values().reset_index(drop=True)
 
-        # 计算时间差(小时),向下取整,用于分组
-        cell_df_filtered['time_diff'] = ((cell_df_filtered['datetime'] - global_start_time).dt.total_seconds() / 3600).astype(int)
+        # ===== 新增步骤: 将不连续的时间映射为连续的时间序列(每10分钟一个点) =====
+        # 创建时间映射表: 原始时间 -> 连续时间
+        continuous_datetimes = pd.date_range(
+            start=global_start_time,
+            periods=len(valid_datetimes),
+            freq='10min'
+        )
+        datetime_mapping = dict(zip(valid_datetimes, continuous_datetimes))
+
+        # 保留原始时间用于显示,添加连续时间列用于计算time_diff
+        cell_df_filtered['datetime_original'] = cell_df_filtered['datetime']  # 保存原始时间
+        cell_df_filtered['datetime_continuous'] = cell_df_filtered['datetime'].map(datetime_mapping)  # 连续时间
+
+        # 计算时间差(小时),向下取整,用于分组(使用连续时间计算)
+        cell_df_filtered['time_diff'] = ((cell_df_filtered['datetime_continuous'] - global_start_time).dt.total_seconds() / 3600).astype(int)
 
         # ===== 步骤4: 处理cell电压数据 =====
         voltage_data = {}
         for cell_field in valid_cells:
-            # 按time_diff分组计算平均值,同时获取每组的第一个时间点
+            # 按time_diff分组计算平均值,同时获取每组的第一个原始时间点和id列表
             grouped = cell_df_filtered.groupby('time_diff').agg({
                 cell_field: 'mean',
-                'datetime': 'first'
+                'datetime_original': 'first',  # 使用原始时间
+                'id': lambda x: x.tolist()  # 收集所有id到列表
             }).reset_index()
 
-            # 重命名列为图表格式: x, y, t
-            grouped.columns = ['x', 'y', 't']
+            # 重命名列为图表格式: x, y, t, id
+            grouped.columns = ['x', 'y', 't', 'id']
             # 先round,再替换NaN为None,避免JSON序列化错误
             grouped['y'] = grouped['y'].round(2)
             grouped['y'] = grouped['y'].replace({np.nan: None})
@@ -218,13 +232,14 @@ async def get_all_device_data(machine_name: str, machine_model: str):
             voltage_data[cell_field] = {
                 'x': grouped['x'].tolist(),
                 'y': grouped['y'].tolist(),
-                't': grouped['t'].tolist()
+                't': grouped['t'].tolist(),
+                'id': grouped['id'].tolist()
             }
 
         # ===== 步骤5: 使用相同的时间点过滤其他指标数据 =====
         # 创建一个辅助函数来处理单个字段
         def process_field(field_name, filter_condition=None):
-            """处理单个字段,使用valid_datetimes中的时间点"""
+            """处理单个字段,使用valid_datetimes中的时间点并映射为连续时间"""
             if field_name not in df.columns:
                 return {"x": [], "y": [], "t": []}
 
@@ -241,13 +256,17 @@ async def get_all_device_data(machine_name: str, machine_model: str):
             if field_df.empty:
                 return {"x": [], "y": [], "t": []}
 
-            # 计算时间差(小时),向下取整,用于分组
-            field_df['time_diff'] = ((field_df['datetime'] - global_start_time).dt.total_seconds() / 3600).astype(int)
+            # 保留原始时间用于显示,添加连续时间列用于计算time_diff
+            field_df['datetime_original'] = field_df['datetime']  # 保存原始时间
+            field_df['datetime_continuous'] = field_df['datetime'].map(datetime_mapping)  # 连续时间
 
-            # 按time_diff分组计算平均值,同时获取每组的第一个时间点
+            # 计算时间差(小时),向下取整,用于分组(使用连续时间计算)
+            field_df['time_diff'] = ((field_df['datetime_continuous'] - global_start_time).dt.total_seconds() / 3600).astype(int)
+
+            # 按time_diff分组计算平均值,同时获取每组的第一个原始时间点
             grouped = field_df.groupby('time_diff').agg({
                 field_name: 'mean',
-                'datetime': 'first'
+                'datetime_original': 'first'  # 使用原始时间
             }).reset_index()
 
             # 重命名列
