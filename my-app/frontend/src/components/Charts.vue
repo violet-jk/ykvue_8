@@ -16,10 +16,11 @@
           <p style="margin: 8px 0;"><strong>📈 简要说明:</strong></p>
           <ul style="margin: 4px 0; padding-left: 20px;">
             <li>可自定义Y轴范围或自动适配</li>
-            <li>自动过滤小室电压小于1400的时间点</li>
+            <li>自动过滤小室电压小于1680的时间点</li>
             <li>所有图表的时间点对齐</li>
             <li>所有数据均为平均值(每小时),向下取整</li>
-            <li>X轴扩充为最大时间的2倍</li>
+            <li>X轴扩充为最大时间的1.2倍</li>
+            <li>修改原始数据目前仅支持修改小室电压</li>
           </ul>
           <p style="margin: 8px 0;"><strong>💡 操作提示:</strong></p>
           <ul style="margin: 4px 0; padding-left: 20px;">
@@ -131,6 +132,23 @@
           </div>
         </div>
         <el-divider direction="vertical" style="height: 50px; margin: 0 8px;"/>
+        <div style="display: flex; gap: 8px; padding-top: 24px;">
+          <el-button
+              type="primary"
+              plain
+              @click="showEditRawDataDialog"
+              :disabled="!chartDataLoaded"
+          >
+            修改原始数据
+          </el-button>
+          <el-button
+              v-if="showRefreshButton"
+              type="success"
+              @click="refreshPage"
+          >
+            刷新页面
+          </el-button>
+        </div>
       </div>
     </el-card>
 
@@ -185,6 +203,119 @@
 
     <!-- 空状态提示 -->
     <el-empty v-if="!chartDataLoaded && !loading" description="请选择设备名称和型号" :image-size="200"/>
+
+    <!-- 修改原始数据对话框 -->
+    <el-dialog
+        v-model="editRawDataDialogVisible"
+        title="修改原始数据"
+        :width="editRawDataStep === 1 ? '30%' : '80%'"
+        :close-on-click-modal="false"
+    >
+      <!-- 第一步：选择时间点 -->
+      <div v-if="editRawDataStep === 1" style="padding: 20px;">
+        <h3 style="margin-bottom: 16px;">步骤 1: 选择时间点</h3>
+        <div style="margin-bottom: 20px;">
+          <div style="margin-bottom: 8px; font-weight: 500;">选择时间点：</div>
+          <el-select-v2
+              v-model="selectedXValue"
+              placeholder="请选择时间点（支持搜索）"
+              filterable
+              remote
+              :remote-method="handleRemoteSearch"
+              :options="displayedXValueOptions"
+              style="width: 100%"
+              @change="handleXValueChange"
+              @visible-change="handleSelectVisibleChange"
+          >
+            <template #footer>
+              <div
+                  v-if="displayedXValueOptions.length < allXValueOptions.length && searchQuery === ''"
+                  @click="loadMoreOptions"
+                  class="load-more-trigger"
+              >
+                点击加载更多 (已加载 {{ displayedXValueOptions.length }} / {{ allXValueOptions.length }})
+              </div>
+            </template>
+          </el-select-v2>
+        </div>
+        <div style="text-align: right;">
+          <el-button @click="editRawDataDialogVisible = false">取消</el-button>
+          <el-button
+              type="primary"
+              @click="loadRawData"
+              :disabled="selectedXValue === null"
+              :loading="loadingRawData"
+          >
+            下一步
+          </el-button>
+        </div>
+      </div>
+
+      <!-- 第二步：编辑数据 -->
+      <div v-if="editRawDataStep === 2" style="padding: 20px;">
+        <h3 style="margin-bottom: 16px;">步骤 2: 编辑数据</h3>
+
+        <el-table
+            :data="rawDataTableData"
+            border
+            stripe
+            style="width: 100%"
+            max-height="500"
+        >
+          <el-table-column prop="cell" label="Cell" width="100" fixed/>
+          <el-table-column
+              v-for="(id, index) in rawDataIds"
+              :key="id"
+              width="180px"
+              :class-name="deletedIdIndices.has(index) ? 'deleted-column' : ''"
+          >
+            <template #header>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px;">
+                <span :style="deletedIdIndices.has(index) ? 'text-decoration: line-through; color: #999;' : ''">
+                  ID: {{ id }}
+                </span>
+                <div style="display: flex; gap: 4px;">
+                  <el-tooltip content="一键修改该列所有值" placement="top">
+                    <el-button
+                        type="primary"
+                        icon="Edit"
+                        size="small"
+                        circle
+                        @click="batchEditColumn(index)"
+                        :disabled="deletedIdIndices.has(index)"
+                    />
+                  </el-tooltip>
+                  <el-tooltip :content="deletedIdIndices.has(index) ? '恢复该列' : '删除该列'" placement="top">
+                    <el-button
+                        :type="deletedIdIndices.has(index) ? 'success' : 'danger'"
+                        :icon="deletedIdIndices.has(index) ? 'RefreshLeft' : 'Delete'"
+                        size="small"
+                        circle
+                        @click="toggleDeleteId(index)"
+                    />
+                  </el-tooltip>
+                </div>
+              </div>
+            </template>
+            <template #default="scope">
+              <el-input-number
+                  v-model="scope.row.values[index]"
+                  :precision="0"
+                  :step="10"
+                  style="width: 100%"
+                  :disabled="deletedIdIndices.has(index)"
+                  :class="deletedIdIndices.has(index) ? 'deleted-input' : ''"
+              />
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <div style="text-align: right; margin-top: 20px;">
+          <el-button @click="editRawDataStep = 1">返回</el-button>
+          <el-button type="primary" @click="saveRawData" :loading="savingRawData">确认更新</el-button>
+        </div>
+      </div>
+    </el-dialog>
   </el-card>
 </template>
 
@@ -214,6 +345,7 @@ interface VoltageData {
     x: number[];
     y: number[];
     t?: string[];
+    id?: number[][];
   };
 }
 
@@ -261,6 +393,25 @@ let chartInstance: Highcharts.Chart | null = null;
 const yAxisMin = ref(0);
 const yAxisMax = ref<number | undefined>(undefined);
 const yAxisStep = ref(10);
+
+// 修改原始数据相关变量
+const editRawDataDialogVisible = ref(false);
+const editRawDataStep = ref(1);
+const xValueOptions = ref<Array<{ x: number, t: string }>>([]);
+const allXValueOptions = ref<Array<{ x: number, t: string, label: string, value: number }>>([]);
+const displayedXValueOptions = ref<Array<{ x: number, t: string, label: string, value: number }>>([]);
+const currentPage = ref(1);
+const pageSize = 50;
+const searchQuery = ref('');
+const selectedXValue = ref<number | null>(null);
+const selectedTValue = ref<string | null>(null);
+const loadingRawData = ref(false);
+const savingRawData = ref(false);
+const rawDataIds = ref<number[]>([]);
+const rawDataTableData = ref<Array<{ cell: string, values: number[] }>>([]);
+const cellNames = ref<string[]>([]);
+const showRefreshButton = ref(false);
+const deletedIdIndices = ref<Set<number>>(new Set()); // 存储要删除的ID索引
 
 // 计算属性
 const yAxisPrecision = computed(() => {
@@ -400,6 +551,33 @@ const loadAllChartData = async () => {
       allData.value = result.data as AllDeviceData;
       chartDataLoaded.value = true;
 
+      // 提取第一组 voltage 数据的 x, t, id, cell 供修改原始数据使用
+      const voltageData = result.data.voltage;
+      if (voltageData && Object.keys(voltageData).length > 0) {
+        // 获取第一个 cell 的数据（所有 cell 的 x, t, id 都是一样的）
+        const firstCellKey = Object.keys(voltageData)[0];
+        const firstCellData = voltageData[firstCellKey];
+
+        if (firstCellData.x && firstCellData.t && firstCellData.id) {
+          // 保存原始 x 和 t 的映射关系
+          xValueOptions.value = firstCellData.x.map((x: number, index: number) => ({
+            x: x,
+            t: firstCellData.t![index]
+          }));
+
+          // 转换为 el-select-v2 需要的格式
+          allXValueOptions.value = firstCellData.x.map((x: number, index: number) => ({
+            x: x,
+            t: firstCellData.t![index],
+            label: `小时数: ${x} (时间: ${firstCellData.t![index]})`,
+            value: x
+          }));
+        }
+
+        // 保存所有 cell 名称
+        cellNames.value = Object.keys(voltageData);
+      }
+
       nextTick(() => {
         renderChart();
       });
@@ -438,6 +616,7 @@ const handleMachineNameChange = () => {
   yAxisMin.value = 0;
   yAxisMax.value = undefined;
   yAxisStep.value = 10;
+  showRefreshButton.value = false;
 };
 
 const handleMachineModelChange = async () => {
@@ -458,6 +637,7 @@ const handleMachineModelChange = async () => {
   yAxisMin.value = 0;
   yAxisMax.value = undefined;
   yAxisStep.value = 10;
+  showRefreshButton.value = false;
 
   if (!selectedMachineModel.value) {
     return;
@@ -594,6 +774,230 @@ const handleUpdateMachineModel = async () => {
   });
 };
 
+// 修改原始数据相关函数
+const showEditRawDataDialog = () => {
+  editRawDataDialogVisible.value = true;
+  editRawDataStep.value = 1;
+  selectedXValue.value = null;
+  selectedTValue.value = null;
+  rawDataTableData.value = [];
+  searchQuery.value = '';
+  currentPage.value = 1;
+  deletedIdIndices.value = new Set(); // 清空删除标记
+  // 初始化时不加载任何数据，等待下拉框打开时加载
+  displayedXValueOptions.value = [];
+};
+
+// 下拉框打开/关闭时的处理
+const handleSelectVisibleChange = (visible: boolean) => {
+  if (visible) {
+    // 打开时加载前50条数据
+    searchQuery.value = '';
+    currentPage.value = 1;
+    loadMoreOptions();
+  }
+};
+
+// 加载更多选项（模拟分页）
+const loadMoreOptions = () => {
+  const startIndex = (currentPage.value - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const newOptions = allXValueOptions.value.slice(startIndex, endIndex);
+
+  if (currentPage.value === 1) {
+    displayedXValueOptions.value = newOptions;
+  } else {
+    displayedXValueOptions.value = [...displayedXValueOptions.value, ...newOptions];
+  }
+
+  currentPage.value++;
+};
+
+// 远程搜索方法（前端模拟）
+const handleRemoteSearch = (query: string) => {
+  searchQuery.value = query;
+
+  if (query === '') {
+    // 清空搜索时，重新加载前50条
+    currentPage.value = 1;
+    displayedXValueOptions.value = allXValueOptions.value.slice(0, pageSize);
+    currentPage.value = 2;
+  } else {
+    // 搜索时，只过滤 x 值（小时数）
+    const filtered = allXValueOptions.value.filter(option => {
+      return option.x.toString().includes(query);
+    });
+    displayedXValueOptions.value = filtered;
+  }
+};
+
+const handleXValueChange = (x: number) => {
+  // X 值改变时，同步更新 T 值（用于后端查询）
+  const item = xValueOptions.value.find(opt => opt.x === x);
+  if (item) {
+    selectedTValue.value = item.t;
+  }
+};
+
+// 切换ID列的删除状态
+const toggleDeleteId = (index: number) => {
+  if (deletedIdIndices.value.has(index)) {
+    deletedIdIndices.value.delete(index);
+  } else {
+    deletedIdIndices.value.add(index);
+  }
+  // 触发响应式更新
+  deletedIdIndices.value = new Set(deletedIdIndices.value);
+};
+
+// 一键修改列的所有值
+const batchEditColumn = (index: number) => {
+  ElMessageBox.prompt('请输入要修改的值（将应用到该列所有单元格）', '一键修改', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    inputPattern: /^-?\d+$/,
+    inputErrorMessage: '请输入有效的整数',
+    inputPlaceholder: '请输入数值'
+  }).then(({value}) => {
+    if (value === null || value === '') {
+      ElMessage.warning('输入值不能为空');
+      return;
+    }
+
+    const newValue = parseInt(value);
+    if (isNaN(newValue)) {
+      ElMessage.error('请输入有效的数值');
+      return;
+    }
+
+    // 更新该列的所有值
+    rawDataTableData.value.forEach(row => {
+      row.values[index] = newValue;
+    });
+
+    ElMessage.success(`已将 ID ${rawDataIds.value[index]} 列的所有值修改为 ${newValue}`);
+  }).catch(() => {
+    // 用户取消操作
+  });
+};
+
+
+const loadRawData = async () => {
+  if (selectedXValue.value === null || !allData.value) return;
+
+  loadingRawData.value = true;
+  try {
+    // 从 voltage 数据中获取对应 x 值的 id 列表
+    const voltageData = allData.value.voltage;
+    const firstCellKey = Object.keys(voltageData)[0];
+    const firstCellData = voltageData[firstCellKey];
+
+    const xIndex = firstCellData.x.findIndex((x: number) => x === selectedXValue.value);
+    if (xIndex === -1) {
+      ElMessage.error('未找到对应的数据');
+      loadingRawData.value = false;
+      return;
+    }
+
+    const ids = firstCellData.id![xIndex];
+
+    // 调用后端接口查询数据
+    const response = await fetch('/api/get/raw_data', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        ids: ids,
+        cells: cellNames.value
+      })
+    });
+
+    const result = await response.json();
+
+    if (result.status === 'success') {
+      rawDataIds.value = ids;
+      // 构建表格数据
+      rawDataTableData.value = result.data.map((item: any) => ({
+        cell: item.cell,
+        values: item.values
+      }));
+      editRawDataStep.value = 2;
+    } else {
+      ElMessage.error(`加载数据失败: ${result.detail || '未知错误'}`);
+    }
+  } catch (error) {
+    console.error('Error loading raw data:', error);
+    ElMessage.error('加载数据失败');
+  } finally {
+    loadingRawData.value = false;
+  }
+};
+
+const saveRawData = async () => {
+  savingRawData.value = true;
+  try {
+    // 构建更新数据和删除数据
+    const updates: Array<{ id: number, cell: string, value: number }> = [];
+    const deletes: number[] = [];
+
+    // 收集要删除的ID
+    deletedIdIndices.value.forEach(index => {
+      deletes.push(rawDataIds.value[index]);
+    });
+
+    // 构建更新数据（排除被标记删除的列）
+    rawDataTableData.value.forEach((row) => {
+      row.values.forEach((value, index) => {
+        if (!deletedIdIndices.value.has(index)) {
+          updates.push({
+            id: rawDataIds.value[index],
+            cell: row.cell,
+            value: value
+          });
+        }
+      });
+    });
+
+    const response = await fetch('/api/get/update_raw_data', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        updates: updates,
+        deletes: deletes
+      })
+    });
+
+    const result = await response.json();
+
+    if (result.status === 'success') {
+      const messages = [];
+      if (result.updated_count > 0) {
+        messages.push(`更新 ${result.updated_count} 条数据`);
+      }
+      if (result.deleted_count > 0) {
+        messages.push(`删除 ${result.deleted_count} 条数据`);
+      }
+      ElMessage.success(`操作成功！${messages.join('，')}`);
+      editRawDataDialogVisible.value = false;
+      showRefreshButton.value = true;
+    } else {
+      ElMessage.error(`更新失败: ${result.detail || '未知错误'}`);
+    }
+  } catch (error) {
+    console.error('Error saving raw data:', error);
+    ElMessage.error('更新失败');
+  } finally {
+    savingRawData.value = false;
+  }
+};
+
+const refreshPage = () => {
+  window.location.reload();
+};
+
 // 调用后端API更新设备型号
 const updateMachineModelInDatabase = async (machineName: string, oldModel: string, newModel: string) => {
   const loading = ElMessage({
@@ -699,7 +1103,7 @@ const renderChart = () => {
 
       if (singleData.x.length > 0) {
         const maxX = Math.max(...singleData.x);
-        xAxisMax = maxX * 2;
+        xAxisMax = maxX * 1.2;
       }
     }
   };
@@ -730,7 +1134,7 @@ const renderChart = () => {
 
         if (seriesData.x.length > 0 && xAxisMax === 0) {
           const maxX = Math.max(...seriesData.x);
-          xAxisMax = maxX * 2;
+          xAxisMax = maxX * 1.2;
         }
       }
     });
@@ -788,7 +1192,7 @@ const renderChart = () => {
     if (firstSeries && 'data' in firstSeries && Array.isArray(firstSeries.data) && firstSeries.data.length > 0) {
       const xValues = (firstSeries.data as Array<{ x: number, y: number, t?: string }>).map(point => point.x);
       const maxX = Math.max(...xValues);
-      xAxisMax = maxX * 2;
+      xAxisMax = maxX * 1.2;
     }
   } else if (selectedChartType.value === 'voltage_range') {
     processSingleSeries(data as SingleSeriesData, '极差', '#7cb5ec');
@@ -1009,5 +1413,48 @@ onBeforeUnmount(() => {
 <style scoped>
 :deep(.el-radio-button__inner) {
   padding: 12px 20px;
+}
+
+.load-more-trigger {
+  text-align: center;
+  padding: 12px;
+  cursor: pointer;
+  color: #409EFF;
+  border-top: 1px solid #EBEEF5;
+  user-select: none;
+  transition: background-color 0.3s;
+}
+
+.load-more-trigger:hover {
+  background-color: #f5f7fa;
+}
+
+/* 删除列的样式 */
+:deep(.deleted-column) {
+  background-color: #f5f5f5 !important;
+  opacity: 0.6;
+}
+
+:deep(.deleted-column .cell) {
+  text-decoration: line-through;
+  color: #999 !important;
+}
+
+:deep(.deleted-input .el-input-number) {
+  opacity: 0.5;
+}
+
+:deep(.deleted-input .el-input-number__decrease),
+:deep(.deleted-input .el-input-number__increase) {
+  display: none;
+}
+
+/* Highcharts tooltip等宽数字样式 */
+:deep(.highcharts-tooltip),
+:deep(.highcharts-tooltip-container),
+:deep(.highcharts-tooltip *) {
+  font-family: "Inter", sans-serif !important;
+  font-variant-numeric: tabular-nums lining-nums !important;
+  font-feature-settings: "tnum" 1, "ss01" 1 !important;
 }
 </style>

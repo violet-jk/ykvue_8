@@ -420,3 +420,148 @@ async def update_machine_model(request: UpdateMachineModelRequest):
     finally:
         if connection:
             connection.close()
+
+
+# 查询原始数据的请求模型
+class RawDataRequest(BaseModel):
+    ids: list[int]
+    cells: list[str]
+
+
+@router.post("/raw_data")
+async def get_raw_data(request: RawDataRequest):
+    """
+    根据 id 列表和 cell 列表查询原始数据
+
+    参数:
+    - ids: id 列表
+    - cells: cell 列表 (如 ['cell_1', 'cell_2', ...])
+
+    返回:
+    {
+        "status": "success",
+        "data": [
+            {"cell": "cell_1", "values": [1680.5, 1681.2, ...]},
+            {"cell": "cell_2", "values": [1679.8, 1680.1, ...]},
+            ...
+        ]
+    }
+    """
+    connection = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor(pymysql.cursors.DictCursor)
+
+        # 构建查询语句
+        id_placeholders = ','.join(['%s'] * len(request.ids))
+        sql = f"SELECT id, {', '.join(request.cells)} FROM wincc WHERE id IN ({id_placeholders}) ORDER BY id"
+
+        cursor.execute(sql, request.ids)
+        results = cursor.fetchall()
+
+        # 构建返回数据
+        data = []
+        for cell in request.cells:
+            values = []
+            for id_value in request.ids:
+                # 在结果中查找对应的 id
+                row = next((r for r in results if r['id'] == id_value), None)
+                if row and cell in row:
+                    values.append(float(row[cell]) if row[cell] is not None else 0.0)
+                else:
+                    values.append(0.0)
+
+            data.append({
+                "cell": cell,
+                "values": values
+            })
+
+        cursor.close()
+
+        return {
+            "status": "success",
+            "data": data
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"查询原始数据失败: {str(e)}")
+    finally:
+        if connection:
+            connection.close()
+
+
+# 更新原始数据的请求模型
+class UpdateRawDataRequest(BaseModel):
+    updates: list[dict]  # [{"id": 123, "cell": "cell_1", "value": 1680.5}, ...]
+    deletes: list[int] = []  # 要删除的ID列表
+
+
+@router.post("/update_raw_data")
+async def update_raw_data(request: UpdateRawDataRequest):
+    """
+    更新原始数据
+
+    参数:
+    - updates: 更新列表，每个元素包含 id, cell, value
+    - deletes: 要删除的ID列表
+
+    返回:
+    {
+        "status": "success",
+        "updated_count": 123,
+        "deleted_count": 5
+    }
+    """
+    connection = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        updated_count = 0
+        deleted_count = 0
+
+        # 1. 执行删除操作
+        if request.deletes:
+            placeholders = ', '.join(['%s'] * len(request.deletes))
+            delete_sql = f"DELETE FROM wincc WHERE id IN ({placeholders})"
+            cursor.execute(delete_sql, request.deletes)
+            deleted_count = cursor.rowcount
+
+        # 2. 按 id 分组更新
+        updates_by_id = {}
+        for update in request.updates:
+            id_value = update['id']
+            cell = update['cell']
+            value = update['value']
+
+            if id_value not in updates_by_id:
+                updates_by_id[id_value] = {}
+            updates_by_id[id_value][cell] = value
+
+        # 3. 执行批量更新
+        for id_value, cell_values in updates_by_id.items():
+            set_clause = ', '.join([f"{cell} = %s" for cell in cell_values.keys()])
+            values = list(cell_values.values())
+            values.append(id_value)
+
+            sql = f"UPDATE wincc SET {set_clause} WHERE id = %s"
+            cursor.execute(sql, values)
+            updated_count += cursor.rowcount
+
+        connection.commit()
+        cursor.close()
+
+        return {
+            "status": "success",
+            "updated_count": updated_count,
+            "deleted_count": deleted_count
+        }
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        raise HTTPException(status_code=500, detail=f"更新原始数据失败: {str(e)}")
+    finally:
+        if connection:
+            connection.close()
+
