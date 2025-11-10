@@ -217,7 +217,7 @@ async def get_all_device_data(machine_name: str, machine_model: str):
                 next_time = continuous_datetimes[-1] + pd.Timedelta(minutes=diff)
             else:
                 # 差值>60分钟,不增加
-                next_time = continuous_datetimes[-1] + pd.Timedelta(minutes=0)
+                next_time = continuous_datetimes[-1] + pd.Timedelta(minutes=10)
             continuous_datetimes.append(next_time)
 
         # 创建时间映射表: 原始时间 -> 连续时间
