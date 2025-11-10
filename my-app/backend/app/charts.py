@@ -197,7 +197,7 @@ async def get_all_device_data(machine_name: str, machine_model: str):
         valid_datetimes = pd.Series(valid_datetimes).sort_values().reset_index(drop=True)
 
         # ===== 新增步骤: 将不连续的时间映射为连续的时间序列 =====
-        # 规则: 如果时间差<=60分钟,保持原差值; 如果>60分钟,只增加1分钟
+        # 规则: 如果时间差<=60分钟,保持原差值; 如果>60分钟,增加0
 
         # 计算所有时间与前一个时间的差值(分钟)
         time_diffs = []
@@ -216,8 +216,8 @@ async def get_all_device_data(machine_name: str, machine_model: str):
                 # 差值<=60分钟,保持原差值
                 next_time = continuous_datetimes[-1] + pd.Timedelta(minutes=diff)
             else:
-                # 差值>60分钟,只增加1小时
-                next_time = continuous_datetimes[-1] + pd.Timedelta(hours=1)
+                # 差值>60分钟,不增加
+                next_time = continuous_datetimes[-1] + pd.Timedelta(minutes=0)
             continuous_datetimes.append(next_time)
 
         # 创建时间映射表: 原始时间 -> 连续时间
