@@ -9,24 +9,24 @@
         <template #default>
           <div class="stat-content">
             <div class="circle-progress">
-              <svg viewBox="0 0 200 200" class="progress-svg">
+              <svg class="progress-svg" viewBox="0 0 200 200">
                 <defs>
-                  <linearGradient id="gradientStroke" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <linearGradient id="gradientStroke" x1="0%" x2="100%" y1="0%" y2="100%">
                     <stop offset="0%" style="stop-color: #4facfe; stop-opacity: 1"/>
                     <stop offset="100%" style="stop-color: #00f2fe; stop-opacity: 1"/>
                   </linearGradient>
                 </defs>
                 <!-- 背景圆环 -->
-                <circle cx="100" cy="100" r="80" class="progress-bg"/>
+                <circle class="progress-bg" cx="100" cy="100" r="80"/>
                 <!-- 进度圆环 -->
                 <circle
-                    cx="100"
-                    cy="100"
-                    r="80"
-                    class="progress-circle"
                     :style="{
                     strokeDashoffset: 502.4 - (502.4 * runningDevicesCount / 15)
                   }"
+                    class="progress-circle"
+                    cx="100"
+                    cy="100"
+                    r="80"
                 />
               </svg>
               <div class="circle-text">
@@ -36,7 +36,7 @@
             </div>
             <!-- MQTT 状态显示在右下角 -->
             <div class="mqtt-status-badge">
-              <div class="status-indicator" :class="serverStatus" @click="showLogsDialog" style="cursor: pointer;">
+              <div :class="serverStatus" class="status-indicator" style="cursor: pointer;" @click="showLogsDialog">
                 <span class="status-dot"></span>
                 <span class="status-text">{{ serverStatus === 'running' ? '运行中' : '未运行' }}</span>
               </div>
@@ -64,15 +64,15 @@
           <div class="stat-content">
             <div class="day-selector">
               <button
-                  class="day-btn"
                   :class="{ active: selectedDay === 1 }"
+                  class="day-btn"
                   @click="selectDay(1)"
               >
                 最近1天
               </button>
               <button
-                  class="day-btn"
                   :class="{ active: selectedDay === 7 }"
+                  class="day-btn"
                   @click="selectDay(7)"
               >
                 最近一周
@@ -87,15 +87,15 @@
         </template>
         <template #default>
           <div class="button-group">
-            <el-button type="info" class="action-btn" @click="handleChangelogClick">
+            <el-button class="action-btn" type="info" @click="handleChangelogClick">
               <span class="btn-icon">📝</span>
               更新日志
             </el-button>
-            <el-button type="success" class="action-btn" @click="handleExportData">
+            <el-button class="action-btn" type="success" @click="handleExportData">
               <span class="btn-icon">📥</span>
               导出数据
             </el-button>
-            <el-button type="primary" class="action-btn" @click="handleHistoryClick">
+            <el-button class="action-btn" type="primary" @click="handleHistoryClick">
               <span class="btn-icon">📋</span>
               查看历史记录
             </el-button>
@@ -105,7 +105,7 @@
     </div>
 
     <!-- 设备实时电压状态卡片 -->
-    <el-card class="voltage-status-card" :class="{ 'loading-animation': loading }">
+    <el-card :class="{ 'loading-animation': loading }" class="voltage-status-card">
       <template #header>
         <div class="voltage-status-header">
           <span class="voltage-status-title">
@@ -120,21 +120,21 @@
         </div>
       </template>
       <template #default>
-        <div class="devices-grid" :class="{ 'refreshing': loading }">
+        <div :class="{ 'refreshing': loading }" class="devices-grid">
           <!-- 加载动画遮罩 -->
           <div v-if="loading" class="loading-overlay-grid">
             <div class="scanning-line"></div>
             <div class="refresh-pulse"></div>
           </div>
-          
+
           <div
               v-for="device in allDevicesStatus"
               :key="device.machine_name"
-              class="device-item"
               :class="{ 'running': device.isRunning, 'stopped': !device.isRunning, 'loading': loading }"
+              class="device-item"
               @click="handleDeviceClick(device.machine_name)"
           >
-            <div class="device-status-dot" :class="{ 'running': device.isRunning, 'stopped': !device.isRunning }"></div>
+            <div :class="{ 'running': device.isRunning, 'stopped': !device.isRunning }" class="device-status-dot"></div>
             <div class="device-name">{{ device.machine_name }}</div>
             <div class="device-voltage">
               <span class="voltage-value">{{ device.voltage }}</span>
@@ -175,17 +175,17 @@
     <!-- 日志对话框 -->
     <el-dialog
         v-model="logsDialogVisible"
+        :close-on-click-modal="false"
         title="系统日志"
         width="80%"
-        :close-on-click-modal="false"
     >
       <div class="logs-dialog-content">
-        <div class="logs-container" ref="logsContainerRef">
+        <div ref="logsContainerRef" class="logs-container">
           <div
               v-for="(log, index) in systemLogs"
               :key="index"
-              class="log-line"
               :class="{'log-error': log.includes('[错误]'), 'log-warning': log.includes('[警告]'), 'log-success': log.includes('[成功]')}"
+              class="log-line"
           >
             {{ log }}
           </div>
@@ -202,26 +202,26 @@
     <!-- 导出数据对话框 -->
     <el-dialog
         v-model="exportDialogVisible"
+        :close-on-click-modal="false"
         title="导出数据"
         width="500px"
-        :close-on-click-modal="false"
     >
       <div class="export-dialog-content">
         <div class="date-range-label">选择时间范围</div>
         <el-date-picker
             v-model="exportDateRange"
-            type="datetimerange"
-            range-separator="至"
-            start-placeholder="起始时间"
             end-placeholder="截止时间"
             format="YYYY-MM-DD HH:mm:ss"
+            range-separator="至"
+            start-placeholder="起始时间"
             style="width: 90%"
+            type="datetimerange"
         />
       </div>
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="exportDialogVisible = false" :disabled="exportLoading">取消</el-button>
-          <el-button type="primary" @click="confirmExport" :loading="exportLoading">
+          <el-button :disabled="exportLoading" @click="exportDialogVisible = false">取消</el-button>
+          <el-button :loading="exportLoading" type="primary" @click="confirmExport">
             {{ exportLoading ? '导出中...' : '确认导出' }}
           </el-button>
         </div>
@@ -231,9 +231,9 @@
     <!-- 更新日志对话框 -->
     <el-dialog
         v-model="changelogDialogVisible"
+        :close-on-click-modal="false"
         title="更新日志"
         width="700px"
-        :close-on-click-modal="false"
     >
       <div class="changelog-dialog-content">
         <div
@@ -267,12 +267,12 @@
     <!-- 设备详细图表对话框 -->
     <el-dialog
         v-model="deviceChartDialogVisible"
-        :title="`${selectedDeviceName} 电压趋势图`"
-        width="85%"
         :close-on-click-modal="false"
+        :title="`${selectedDeviceName} 电压趋势图`"
         align-center
         destroy-on-close
         top="5vh"
+        width="85%"
     >
       <div class="device-chart-container">
         <div id="device-detail-chart" class="device-detail-chart"></div>
@@ -286,8 +286,8 @@
   </div>
 </template>
 
-<script setup lang="ts">
-import {ref, computed, onMounted, onUnmounted, watch, nextTick} from 'vue'
+<script lang="ts" setup>
+import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue'
 import {useRouter} from 'vue-router'
 import axios from 'axios'
 import Highcharts from 'highcharts'
@@ -439,7 +439,7 @@ const fetchIncrementalData = async () => {
 
     const newQueryTime = response.data.query_time
     const newDevicesData = response.data.devices
-    
+
     // 更新查询时间
     queryTime.value = newQueryTime
     lastQueryTime.value = newQueryTime
@@ -447,12 +447,12 @@ const fetchIncrementalData = async () => {
     // 合并新数据到现有数据
     newDevicesData.forEach(newDevice => {
       const existingDevice = devicesData.value.find(d => d.machine_name === newDevice.machine_name)
-      
+
       if (existingDevice) {
         // 如果设备已存在，追加新数据点
         if (newDevice.voltage_data.length > 0) {
           existingDevice.voltage_data.push(...newDevice.voltage_data)
-          
+
           // 更新图表数据（增量添加点）
           updateChartData(newDevice.machine_name, newDevice.voltage_data)
         }
@@ -640,6 +640,17 @@ const changelogData = [
       '所有数据查看迁移至历史记录页面, 优化主页面布局',
       '新增数据导出功能, 可选择时间范围(默认一个月)导出所有设备的数据为CSV文件',
       '新增MQTT中转服务器状态显示, 实时查看服务器连接状态及日志',
+    ]
+  },
+  {
+    version: 'v1.1.0',
+    date: '2025-11-17',
+    changes: [
+      '图表中X轴延长1倍修改为20%',
+      '设备型号增加修改名称的功能',
+      '数据过滤从1400改为1680',
+      '时间轴时长删除空段后要延续',
+      '自定义修改/删除小室电压的值'
     ]
   },
 ]
@@ -1047,7 +1058,7 @@ const createDeviceDetailChart = (machineName: string) => {
 const updateChartData = (machineName: string, newVoltageData: VoltageData[]) => {
   const chartId = 'combined-chart'
   const chart = chartsMap.get(chartId)
-  
+
   if (!chart) {
     // 如果图表不存在，初始化图表
     initCharts()
@@ -1056,7 +1067,7 @@ const updateChartData = (machineName: string, newVoltageData: VoltageData[]) => 
 
   // 查找对应的系列
   const series = chart.series.find(s => s.name === machineName)
-  
+
   if (!series) {
     // 如果系列不存在，可能是新设备，需要重新初始化图表
     console.log(`设备 ${machineName} 的系列不存在，重新初始化图表`)
@@ -1068,7 +1079,7 @@ const updateChartData = (machineName: string, newVoltageData: VoltageData[]) => 
   newVoltageData.forEach(d => {
     const timePoint = `${d.date} ${d.time}`
     const timestamp = new Date(timePoint).getTime()
-    
+
     // 使用 addPoint 方法增量添加数据点
     // 参数: [x, y], redraw=false (批量添加时不重绘), shift=false (不移除旧数据), animation=false (无动画)
     series.addPoint([timestamp, d.avg_voltage], false, false, false)
@@ -1084,7 +1095,7 @@ const updateChartData = (machineName: string, newVoltageData: VoltageData[]) => 
 
   // 批量添加完成后，一次性重绘图表
   chart.redraw()
-  
+
 }
 
 // 初始化图表
@@ -2133,10 +2144,10 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(14, 165, 233, 0.1) 50%,
-    transparent 100%
+      90deg,
+      transparent 0%,
+      rgba(14, 165, 233, 0.1) 50%,
+      transparent 100%
   );
   animation: card-shimmer 2s infinite;
   pointer-events: none;
@@ -2215,12 +2226,12 @@ onUnmounted(() => {
   width: 100%;
   height: 3px;
   background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(14, 165, 233, 0.3) 20%,
-    rgba(14, 165, 233, 0.8) 50%,
-    rgba(14, 165, 233, 0.3) 80%,
-    transparent 100%
+      90deg,
+      transparent 0%,
+      rgba(14, 165, 233, 0.3) 20%,
+      rgba(14, 165, 233, 0.8) 50%,
+      rgba(14, 165, 233, 0.3) 80%,
+      transparent 100%
   );
   box-shadow: 0 0 20px rgba(14, 165, 233, 0.8);
   animation: scan-vertical 2s ease-in-out infinite;
@@ -2301,10 +2312,10 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.6) 50%,
-    transparent 100%
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.6) 50%,
+      transparent 100%
   );
   animation: value-shimmer 1.5s infinite;
 }
