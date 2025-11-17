@@ -9,7 +9,7 @@ DB_CONFIG = {
 
 # MQTT配置
 MQTT_CONFIG = {
-    "broker": "124.222.161.163",
+    "broker": "115.190.206.11",
     "port": 1883,
     "keepalive": 120,
     "topic": "WinCC/#",  # 订阅WinCC下的所有主题
