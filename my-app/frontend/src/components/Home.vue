@@ -237,7 +237,7 @@
     >
       <div class="changelog-dialog-content">
         <div
-            v-for="(log, index) in changelogData"
+            v-for="(log, index) in sortedChangelogData"
             :key="index"
             class="changelog-item"
         >
@@ -1299,6 +1299,11 @@ const initCharts = () => {
   // 存储图表引用
   chartsMap.set(chartId, newChart)
 }
+
+// 日志倒序显示计算属性
+const sortedChangelogData = computed(() => {
+  return [...changelogData].reverse()
+})
 
 // 页面加载时获取数据并启动自动刷新
 onMounted(() => {
