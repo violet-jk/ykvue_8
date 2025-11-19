@@ -23,7 +23,7 @@ MQTT_KEEPALIVE = 60  # 发送工具使用较短的keepalive
 
 # 发送配置
 TOTAL_SEND_TIME = 5  # 总发送时间(秒)
-SEND_INTERVAL_MINUTES = 5  # 定时发送间隔(分钟)
+SEND_INTERVAL_MINUTES = 2  # 定时发送间隔(分钟)
 NUM_DEVICES = 15  # 设备数量
 
 # 统计信息
@@ -152,7 +152,7 @@ def generate_random_value(field_name, data_type):
         elif field_name == 'total_voltage':
             return round(random.uniform(400.0, 600.0), 1)  # 总电压 (V)
         elif field_name == 'avg_voltage':
-            return round(random.uniform(1900.0, 2100.0), 1)  # 平均电压 (mV)
+            return round(random.uniform(0.0, 0.0), 1)  # 平均电压 (mV)
         else:
             return round(random.uniform(0.0, 100.0), 1)
     
