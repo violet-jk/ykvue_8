@@ -511,7 +511,7 @@ const fetchOverviewData = async (isIncremental = false) => {
   loading.value = true;
   // const startTime = performance.now() // 移除延迟计算
   try {
-    const params: any = { day: 1 };
+    const params: any = { day: 1 ,isfake: 1};
     if (isIncremental && lastQueryTime.value) {
       params.last_query_time = lastQueryTime.value;
     }

@@ -30,6 +30,7 @@ def get_db_connection():
 async def get_overview(
     day: int = Query(1, description="查询天数: 1, 7, 15, 30"),
     last_query_time: str = Query(None, description="上次查询时间，用于增量更新"),
+    isfake: int = Query(0, description="是否开启虚拟数据填充: 0-否, 1-是"),
 ):
     """
     获取15个设备的电压概览数据
@@ -37,6 +38,7 @@ async def get_overview(
     参数:
     - day: 查询天数，默认为1天，可选值：1, 7, 15, 30
     - last_query_time: 上次查询时间，如果提供则只返回新增数据
+    - isfake: 是否开启虚拟数据填充，默认为0
 
     返回:
     {
@@ -139,6 +141,39 @@ async def get_overview(
                         "avg_voltage": float(row["avg_voltage"]),
                     }
                 )
+
+        # 处理虚拟数据填充
+        if isfake == 1:
+            for m_name in target_machines:
+                data_list = devices_map[m_name]
+                if not data_list:
+                    continue
+
+                # 获取最后一条数据的时间
+                last_item = data_list[-1]
+                try:
+                    last_dt_str = f"{last_item['date']} {last_item['time']}"
+                    last_dt = datetime.strptime(last_dt_str, "%Y-%m-%d %H:%M:%S")
+
+                    # 检查与查询时间的差值
+                    diff = query_time - last_dt
+
+                    # 如果差值 >= 15分钟
+                    if diff >= timedelta(minutes=15):
+                        # 从最大时间之后 每隔10分钟添加一个虚拟数据
+                        next_dt = last_dt + timedelta(minutes=10)
+                        while next_dt <= query_time:
+                            data_list.append(
+                                {
+                                    "date": next_dt.strftime("%Y-%m-%d"),
+                                    "time": next_dt.strftime("%H:%M:%S"),
+                                    "avg_voltage": 0.0,
+                                }
+                            )
+                            next_dt += timedelta(minutes=10)
+
+                except (ValueError, TypeError):
+                    continue
 
         # 转换为列表格式
         for machine_name in target_machines:
