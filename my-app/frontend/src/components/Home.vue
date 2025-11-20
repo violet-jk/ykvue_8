@@ -91,13 +91,35 @@
               >
             </div>
           </div>
-          <button
-            :disabled="loading"
-            class="bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-200 px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-            @click="refreshAll"
-          >
-            {{ loading ? "刷新中..." : "立即刷新" }}
-          </button>
+          <div class="flex items-center gap-3">
+            <button
+              :disabled="loading"
+              class="bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-200 px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              @click="refreshAll"
+            >
+              {{ loading ? "刷新中..." : "立即刷新" }}
+            </button>
+            <div
+              class="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg"
+            >
+              <svg
+                class="w-4 h-4 text-slate-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                ></path>
+              </svg>
+              <span class="text-sm font-mono text-slate-600 font-medium">{{
+                countdownDisplay
+              }}</span>
+            </div>
+          </div>
 
           <!-- 其他操作下拉菜单 -->
           <div class="relative group">
@@ -492,6 +514,10 @@ const lastQueryTime = ref<string>("");
 // 定时器
 let refreshInterval: ReturnType<typeof setInterval> | null = null;
 let timeInterval: ReturnType<typeof setInterval> | null = null;
+let countdownInterval: ReturnType<typeof setInterval> | null = null;
+
+// 倒计时（秒）
+const countdown = ref(300); // 5分钟 = 300秒
 
 // 初始化空数据 (1-15号机)
 const initDevices = () => {
@@ -511,7 +537,7 @@ const fetchOverviewData = async (isIncremental = false) => {
   loading.value = true;
   // const startTime = performance.now() // 移除延迟计算
   try {
-    const params: any = { day: 1 ,isfake: 1};
+    const params: any = { day: 1, isfake: 1 };
     if (isIncremental && lastQueryTime.value) {
       params.last_query_time = lastQueryTime.value;
     }
@@ -704,7 +730,18 @@ const getStatusText = (device: DeviceDisplay) => {
 
 const refreshAll = () => {
   fetchOverviewData(false);
+  // 重置倒计时为5分钟
+  countdown.value = 300;
 };
+
+// 倒计时显示格式化为 mm:ss
+const countdownDisplay = computed(() => {
+  const minutes = Math.floor(countdown.value / 60);
+  const seconds = countdown.value % 60;
+  return `${minutes.toString().padStart(2, "0")}:${seconds
+    .toString()
+    .padStart(2, "0")}`;
+});
 
 // 更新日志相关
 const changelogDialogVisible = ref(false);
@@ -1018,17 +1055,26 @@ onMounted(() => {
   // 每 5 分钟刷新一次
   refreshInterval = setInterval(() => {
     fetchOverviewData(true); // 尝试增量更新
+    countdown.value = 300; // 重置倒计时
   }, 300000);
 
   // 每秒更新一次时间显示
   timeInterval = setInterval(() => {
     currentTime.value = new Date().toLocaleTimeString("zh-CN");
   }, 1000);
+
+  // 每秒更新倒计时
+  countdownInterval = setInterval(() => {
+    if (countdown.value > 0) {
+      countdown.value--;
+    }
+  }, 1000);
 });
 
 onUnmounted(() => {
   if (refreshInterval) clearInterval(refreshInterval);
   if (timeInterval) clearInterval(timeInterval);
+  if (countdownInterval) clearInterval(countdownInterval);
 });
 </script>
 
