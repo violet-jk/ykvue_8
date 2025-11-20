@@ -74,6 +74,7 @@ CREATE TABLE wincc
     `hydrogen_flow_meter`      DECIMAL(10, 4) DEFAULT NULL COMMENT '氢气流量',
     `oxygen_in_hydrogen`       INT            DEFAULT NULL COMMENT '氧中氢含量(ppm)',
     `hydrogen_in_oxygen`       INT            DEFAULT NULL COMMENT '氢中氧含量(ppm)',
+    `alkali_flow_meter`        DECIMAL(10, 4) DEFAULT NULL COMMENT '碱液流量(L/min)',
 
     -- 能耗
     `current_power`            DECIMAL(10, 4) DEFAULT NULL COMMENT '当前能耗（直流电耗）',

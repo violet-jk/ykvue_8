@@ -446,13 +446,14 @@ def map_mqtt_to_db_field(mqtt_name: str, machine_name: str) -> str:
         'TT101': 'alkali_inlet_temp',
         'TT106': 'hydrogen_outlet_temp',
         'TT114': 'hydrogen_gas_temp',
-        'FIT109': 'hydrogen_flow_meter',
+        'FIT109': 'alkali_flow_meter',
         'AT132': 'oxygen_in_hydrogen',
         'AT131': 'hydrogen_in_oxygen',
         '当前能耗': 'current_power',
         'ELE_PDT': 'pressure_diff',
         'SEP_PDT': 'sep_pressure_diff',
         '标准差': 'std_deviation',
+        '当前产氢量': 'hydrogen_flow_meter'
     }
 
     return field_mapping.get(base_name, None)
