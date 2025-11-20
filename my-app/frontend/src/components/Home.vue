@@ -657,7 +657,7 @@ const showLogsDialog = () => {
 // SVG 路径生成 helper
 // 固定量程 0-2000
 const getPolylinePath = (history: number[]) => {
-  const max = 2700;
+  const max = 2800;
   const min = 0;
   const width = 100;
 

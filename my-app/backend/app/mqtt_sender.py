@@ -152,7 +152,7 @@ def generate_random_value(field_name, data_type):
         elif field_name == 'total_voltage':
             return round(random.uniform(400.0, 600.0), 1)  # 总电压 (V)
         elif field_name == 'avg_voltage':
-            return round(random.uniform(0.0, 0.0), 1)  # 平均电压 (mV)
+            return round(random.uniform(0.0, 2100.0), 1)  # 平均电压 (mV)
         else:
             return round(random.uniform(0.0, 100.0), 1)
     
