@@ -28,7 +28,7 @@ class LoginResponse(BaseModel):
 @router.post("/login", response_model=LoginResponse)
 async def login(request: LoginRequest):
     """
-    登录接口：验证API密钥
+    登录接口:验证API密钥
     """
     if request.api_key == API_KEY:
         # 生成一个随机token
@@ -58,7 +58,7 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
 @router.post("/logout")
 async def logout(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """
-    登出接口：移除token
+    登出接口:移除token
     """
     token = credentials.credentials
     if token in active_tokens:
@@ -68,7 +68,7 @@ async def logout(credentials: HTTPAuthorizationCredentials = Depends(security)):
 
 def verify_auth_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """
-    依赖项：验证请求的token
+    依赖项:验证请求的token
     """
     token = credentials.credentials
     if token not in active_tokens:
