@@ -1004,6 +1004,7 @@ const renderDetailChart = (data: VoltageData[], queryTimeStr: string) => {
       title: { text: "平均电压 (mV)" },
       gridLineWidth: 1,
       gridLineColor: "#f1f5f9",
+      min: 0,
     },
     tooltip: {
       shared: true,
