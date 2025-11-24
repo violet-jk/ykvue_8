@@ -241,7 +241,7 @@ async def export_data(
         # 查询所有设备在指定时间范围内的所有字段数据，按device, date, time升序
         sql = """
               SELECT machine_name,
-                     machine_model, date, time, hours, total_current, total_voltage, cell_1, cell_2, cell_3, cell_4, cell_5, cell_6, cell_7, cell_8, cell_9, cell_10, cell_11, cell_12, cell_13, cell_14, cell_15, cell_16, cell_17, cell_18, cell_19, cell_20, max_voltage, min_voltage, avg_voltage, voltage_range, std_deviation, pump_pressure, pump_opening, fan_opening, specific_gravity, liquid_level, inlet_pressure, oxygen_outlet_pressure, hydrogen_outlet_pressure, pressure_diff, sep_pressure_diff, alkali_inlet_temp, oxygen_outlet_temp, hydrogen_outlet_temp, hydrogen_gas_temp, hydrogen_flow_meter, oxygen_in_hydrogen, hydrogen_in_oxygen, current_power
+                     machine_model, date, time, hours, total_current, total_voltage, cell_1, cell_2, cell_3, cell_4, cell_5, cell_6, cell_7, cell_8, cell_9, cell_10, cell_11, cell_12, cell_13, cell_14, cell_15, cell_16, cell_17, cell_18, cell_19, cell_20, max_voltage, min_voltage, avg_voltage, voltage_range, std_deviation, pump_pressure, pump_opening, fan_opening, specific_gravity, liquid_level, inlet_pressure, oxygen_outlet_pressure, hydrogen_outlet_pressure, pressure_diff, sep_pressure_diff, alkali_inlet_temp, oxygen_outlet_temp, hydrogen_outlet_temp, hydrogen_gas_temp, hydrogen_flow_meter, oxygen_in_hydrogen, hydrogen_in_oxygen, current_power, alkali_flow_meter
               FROM wincc
               WHERE CONCAT(date
                   , ' '
@@ -313,6 +313,7 @@ async def export_data(
             "氧中氢/ppm",
             "氢中氧/ppm",
             "当前能耗（直流电耗）",
+            "碱液流量L/min",
         ]
         writer.writerow(headers)
 
@@ -390,6 +391,7 @@ async def export_data(
                     format_value(row["oxygen_in_hydrogen"], 0),
                     format_value(row["hydrogen_in_oxygen"], 0),
                     format_value(row["current_power"], 4),
+                    format_value(row["alkali_flow_meter"], 4)
                 ]
             )
 
