@@ -820,9 +820,13 @@ const getStatusText = (device: DeviceDisplay) => {
   return "停止";
 };
 
-const refreshAll = () => {
-  fetchOverviewData(false);
-  fetchHoursData(); // 同时刷新运行时长
+const refreshAll = async () => {
+  // 先让计算量小的 fetchOverviewData 完成
+  await fetchOverviewData(false);
+
+  // 然后再调用计算量大的 fetchHoursData
+  await fetchHoursData();
+
   // 重置倒计时为5分钟
   countdown.value = 300;
   // 重置运行时长倒计时为60分钟
@@ -1144,12 +1148,14 @@ const renderDetailChart = (data: VoltageData[], queryTimeStr: string) => {
   } as any);
 };
 
-onMounted(() => {
+onMounted(async () => {
   initDevices();
-  fetchOverviewData(false);
 
-  // 异步获取运行时长数据
-  fetchHoursData();
+  // 先让计算量小的 fetchOverviewData 完成
+  await fetchOverviewData(false);
+
+  // 然后再调用计算量大的 fetchHoursData
+  await fetchHoursData();
 
   // 每 5 分钟刷新一次电压数据
   refreshInterval = setInterval(() => {
