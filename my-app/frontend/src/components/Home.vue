@@ -147,22 +147,28 @@
             >
               <div class="py-1">
                 <a
-                    class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-blue-600 cursor-pointer flex items-center gap-2"
+                    class="flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-blue-600 cursor-pointer transition-colors"
                     @click="handleChangelogClick"
                 >
                   <span>📝</span> 更新日志
                 </a>
                 <a
-                    class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-blue-600 cursor-pointer flex items-center gap-2"
+                    class="flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-blue-600 cursor-pointer transition-colors"
                     @click="handleExportData"
                 >
                   <span>📥</span> 导出数据
                 </a>
                 <a
-                    class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-blue-600 cursor-pointer flex items-center gap-2"
+                    class="flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-blue-600 cursor-pointer transition-colors"
                     @click="handleHistoryClick"
                 >
                   <span>📋</span> 历史数据
+                </a>
+                <a
+                    class="flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-blue-600 cursor-pointer transition-colors"
+                    @click="handleDataTableClick"
+                >
+                  <span>📊</span> 数据表格
                 </a>
               </div>
             </div>
@@ -882,6 +888,11 @@ const handleChangelogClick = () => {
 // 历史数据跳转
 const handleHistoryClick = () => {
   router.push("/charts");
+};
+
+// 数据表格跳转
+const handleDataTableClick = () => {
+  router.push("/data-table");
 };
 
 // 导出数据相关

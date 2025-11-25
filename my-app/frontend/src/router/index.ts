@@ -6,11 +6,13 @@ import { ElMessage } from 'element-plus'
 const Charts = () => import('../components/Charts.vue')
 const Login = () => import('../components/Login.vue')
 const Home = () => import('../components/Home.vue')
+const DataTable = () => import('../components/DataTable.vue')
 
 const routes: RouteRecordRaw[] = [
     {path: '/', name: 'root', component: Home, meta: { requiresAuth: true }},
     {path: '/home', name: 'home', component: Home, meta: { requiresAuth: true }},
     {path: '/charts', name: 'charts', component: Charts, meta: { requiresAuth: true }},
+    {path: '/data-table', name: 'data-table', component: DataTable, meta: { requiresAuth: true }},
     {path: '/login', name: 'login', component: Login, meta: { requiresAuth: false }},
 ]
 

@@ -1,38 +1,39 @@
 <template>
-  <el-card>
-    <!-- 返回按钮和说明 -->
-    <div style="margin-bottom: 20px; display: flex; gap: 12px; align-items: center;">
-      <el-button @click="goHome" type="primary" plain icon="ArrowLeft">返回首页</el-button>
-      <el-popover
-          placement="bottom-start"
-          :width="400"
-          trigger="hover"
-      >
-        <template #reference>
-          <el-button type="info" plain icon="InfoFilled">说明</el-button>
-        </template>
-        <div style="line-height: 1.8;">
-          <h4 style="margin: 0 0 12px 0; color: #409EFF;">📊 图表说明</h4>
-          <p style="margin: 8px 0;"><strong>📈 简要说明:</strong></p>
-          <ul style="margin: 4px 0; padding-left: 20px;">
-            <li>可自定义Y轴范围或自动适配</li>
-            <li>自动过滤小室电压小于1680的时间点</li>
-            <li>所有图表的时间点对齐</li>
-            <li>所有数据均为平均值(每小时),向下取整</li>
-            <li>X轴扩充为最大时间的1.2倍</li>
-            <li>修改原始数据目前仅支持修改小室电压</li>
-          </ul>
-          <p style="margin: 8px 0;"><strong>💡 操作提示:</strong></p>
-          <ul style="margin: 4px 0; padding-left: 20px;">
-            <li>支持X轴缩放,鼠标选中区域就可以放大图表</li>
-            <li>按住Shift+拖拽:平移图表</li>
-          </ul>
+  <div class="h-[90vh] flex flex-col bg-background text-slate-600 antialiased font-sans overflow-hidden">
+    <!-- 顶部导航 -->
+    <nav class="bg-surface sticky top-0 z-50 border-b border-slate-200 px-6 py-4 shadow-sm backdrop-blur-md bg-white/90">
+      <div class="max-w-8xl mx-auto flex justify-between items-center">
+        <!-- 左侧区域：Logo 和标题 -->
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-blue-600 text-white rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/30">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+            </svg>
+          </div>
+          <div>
+            <h1 class="text-xl font-bold text-slate-800 tracking-tight">历史数据分析</h1>
+            <p class="text-xs text-slate-500 font-medium">电解槽多维度数据图表</p>
+          </div>
         </div>
-      </el-popover>
-    </div>
 
-    <!-- 图表类型选择器 -->
-    <el-card style="margin-bottom: 20px;">
+        <!-- 右侧区域：操作按钮 -->
+        <div class="flex items-center gap-3">
+          <button class="bg-slate-100 border border-slate-200 text-slate-600 hover:bg-slate-200 px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition-all active:scale-95 flex items-center gap-2" @click="showInstructions">
+            <span>📖</span>
+            <span>使用说明</span>
+          </button>
+
+          <button class="bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-200 px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition-all active:scale-95" @click="goHome">
+            返回首页
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- 主要内容区域 -->
+    <main class="flex-1 p-6 max-w-8xl mx-auto w-full overflow-y-auto">
+      <!-- 图表类型选择器 -->
+      <el-card style="margin-bottom: 20px;">
       <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
         <div v-if="chartDataLoaded">
           <el-radio-group v-model="selectedChartType" @change="handleChartTypeChange" size="large">
@@ -316,7 +317,39 @@
         </div>
       </div>
     </el-dialog>
-  </el-card>
+
+    <!-- 使用说明对话框 -->
+    <el-dialog
+        v-model="instructionsDialogVisible"
+        title="使用说明"
+        width="600px"
+        :close-on-click-modal="false"
+    >
+      <div style="line-height: 1.8; padding: 0 20px;">
+        <h4 style="margin: 16px 0 12px 0; color: #409EFF; font-size: 16px;">📊 图表说明</h4>
+        <p style="margin: 8px 0; font-weight: 600; color: #303133;">📈 简要说明:</p>
+        <ul style="margin: 4px 0 16px 20px; color: #606266;">
+          <li style="margin: 4px 0;">可自定义Y轴范围或自动适配</li>
+          <li style="margin: 4px 0;">自动过滤小室电压小于1680的时间点</li>
+          <li style="margin: 4px 0;">所有图表的时间点对齐</li>
+          <li style="margin: 4px 0;">所有数据均为平均值(每小时),向下取整</li>
+          <li style="margin: 4px 0;">X轴扩充为最大时间的1.2倍</li>
+          <li style="margin: 4px 0;">修改原始数据目前仅支持修改小室电压</li>
+        </ul>
+        <p style="margin: 8px 0; font-weight: 600; color: #303133;">💡 操作提示:</p>
+        <ul style="margin: 4px 0 16px 20px; color: #606266;">
+          <li style="margin: 4px 0;">支持X轴缩放,鼠标选中区域就可以放大图表</li>
+          <li style="margin: 4px 0;">按住Shift+拖拽:平移图表</li>
+        </ul>
+      </div>
+      <template #footer>
+        <div style="text-align: right;">
+          <el-button type="primary" @click="instructionsDialogVisible = false">知道了</el-button>
+        </div>
+      </template>
+    </el-dialog>
+  </main>
+  </div>
 </template>
 
 <script lang="ts" setup>
@@ -332,6 +365,13 @@ const router = useRouter();
 // 返回首页
 const goHome = () => {
   router.push('/home');
+};
+
+// 使用说明对话框
+const instructionsDialogVisible = ref(false);
+
+const showInstructions = () => {
+  instructionsDialogVisible.value = true;
 };
 
 // 接口定义
