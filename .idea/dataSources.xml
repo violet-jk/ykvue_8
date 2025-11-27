@@ -8,5 +8,26 @@
       <jdbc-url>jdbc:mysql://gz-cdb-bqpsb1r0.sql.tencentcdb.com:21325</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
+    <data-source source="LOCAL" name="N01251126095035_35305.ndat" uuid="f29d4347-989b-4374-ae8a-d606cc71f786">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
+      <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/../Program Files/NGISoftware/N36100/Data/N01251126095035_35305.ndat</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
+    <data-source source="LOCAL" name="app_data.db" uuid="11b30200-fae7-4c40-bbfa-5dac716cfa42">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
+      <jdbc-url>jdbc:sqlite:$USER_HOME$/AppData/Roaming/electron-python-vue-app/app_data.db</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
+    <data-source source="LOCAL" name="MgrWork.db" uuid="c8fd2bb3-9dbe-4734-9195-c43ebfec4de9">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
+      <jdbc-url>jdbc:sqlite:$USER_HOME$/Desktop/temp/1125/新建文件夹/MgrWork.db</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
   </component>
 </project>
