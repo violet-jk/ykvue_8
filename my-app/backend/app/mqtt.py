@@ -268,6 +268,14 @@ def clean_and_upload_data():
 
         inserted_count = 0
         for machine_name, data in devices_data.items():
+            if int(machine_name) not in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]:
+                with mqtt_lock:
+                    mqtt_logs.append({
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "level": "错误",
+                        "message": "[数据处理] 无效的设备编号: {machine_name}"
+                    })
+                continue  # 跳过无效设备编号
             try:
                 # 提取时间字段
                 dt = data.pop('time')
